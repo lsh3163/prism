@@ -1,0 +1,445 @@
+diff --git a/humanoidverse/agents/base_model.py b/humanoidverse/agents/base_model.py
+index 118262b..9a00071 100755
+--- a/humanoidverse/agents/base_model.py
++++ b/humanoidverse/agents/base_model.py
+@@ -31,11 +31,18 @@ def save_model(path: str, model: "BaseModel", build_kwargs: tp.Optional[tp.Dict[
+ def load_model(
+     path: str, device: str | None, strict: bool, config_class: "BaseModelConfig", build_kwargs: tp.Optional[tp.Dict[str, tp.Any]] = None
+ ) -> "BaseModel":
++    def _normalize_loaded_config(cfg: dict) -> dict:
++        cfg = json.loads(json.dumps(cfg))
++        model_device = cfg.get("device")
++        if isinstance(model_device, str) and model_device.startswith("cuda"):
++            cfg["device"] = "cuda"
++        return cfg
++
+     model_dir = Path(path)
+     with (model_dir / "config.json").open() as f:
+-        loaded_config = json.load(f)
++        loaded_config = _normalize_loaded_config(json.load(f))
+     if device is not None:
+-        loaded_config["device"] = device
++        loaded_config["device"] = "cuda" if device.startswith("cuda") else device
+ 
+     if (model_dir / "init_kwargs.pkl").exists():
+         with (model_dir / "init_kwargs.pkl").open("rb") as f:
+diff --git a/humanoidverse/agents/evaluations/humanoidverse_isaac.py b/humanoidverse/agents/evaluations/humanoidverse_isaac.py
+index 611bf64..a45a8fb 100644
+--- a/humanoidverse/agents/evaluations/humanoidverse_isaac.py
++++ b/humanoidverse/agents/evaluations/humanoidverse_isaac.py
+@@ -580,6 +580,9 @@ def distance_proximity(next_obs: torch.Tensor, tracking_target: torch.Tensor, bo
+     out_bounds_mask = dist > bound + margin
+     stats[f"{prefix}proximity"] = (in_bounds_mask + ((bound + margin - dist) / margin) * (~in_bounds_mask) * (~out_bounds_mask)).mean()
+     stats[f"{prefix}distance"] = dist.mean()
++    # Match the benchmark helper's tracking success criterion so paper-style
++    # Success / EMD tables can be regenerated from the Isaac evaluator.
++    stats[f"{prefix}success"] = in_bounds_mask.min().float()
+     return stats
+ 
+ 
+diff --git a/humanoidverse/agents/fb/agent.py b/humanoidverse/agents/fb/agent.py
+index b34f366..25955e3 100755
+--- a/humanoidverse/agents/fb/agent.py
++++ b/humanoidverse/agents/fb/agent.py
+@@ -379,11 +379,18 @@ class FBAgent:
+ 
+     @classmethod
+     def load(cls, path: str, device: str | None = None):
++        def _normalize_loaded_config(cfg: dict) -> dict:
++            cfg = json.loads(json.dumps(cfg))
++            model_device = cfg.get("model", {}).get("device")
++            if isinstance(model_device, str) and model_device.startswith("cuda"):
++                cfg["model"]["device"] = "cuda"
++            return cfg
++
+         path = Path(path)
+         with (path / "config.json").open() as f:
+-            loaded_config = json.load(f)
++            loaded_config = _normalize_loaded_config(json.load(f))
+         if device is not None:
+-            loaded_config["model"]["device"] = device
++            loaded_config["model"]["device"] = "cuda" if device.startswith("cuda") else device
+ 
+         if (path / "init_kwargs.pkl").exists():
+             # Load arguments from a pickle file
+diff --git a/humanoidverse/tracking_inference.py b/humanoidverse/tracking_inference.py
+index d999125..d501c4b 100755
+--- a/humanoidverse/tracking_inference.py
++++ b/humanoidverse/tracking_inference.py
+@@ -3,16 +3,17 @@ import os
+ os.environ["MUJOCO_GL"] = "egl"  # Use EGL for rendering
+ os.environ["OMP_NUM_THREADS"] = "1"
+ 
+-from pathlib import Path
+-from humanoidverse.agents.load_utils import load_model_from_checkpoint_dir
+ import json
+-from humanoidverse.agents.envs.humanoidverse_isaac import HumanoidVerseIsaacConfig, IsaacRendererWithMuJoco
+-import torch
+-from humanoidverse.utils.helpers import export_meta_policy_as_onnx
+-from humanoidverse.utils.helpers import get_backward_observation
++from pathlib import Path
++
+ import joblib
+ import mediapy as media
+ import numpy as np
++import torch
++from humanoidverse.agents.envs.humanoidverse_isaac import HumanoidVerseIsaacConfig, IsaacRendererWithMuJoco
++from humanoidverse.agents.load_utils import load_model_from_checkpoint_dir
++from humanoidverse.utils.helpers import export_meta_policy_as_onnx
++from humanoidverse.utils.helpers import get_backward_observation
+ from torch.utils._pytree import tree_map
+ 
+ import humanoidverse
+@@ -22,9 +23,125 @@ else:
+     HUMANOIDVERSE_DIR = Path(__file__).resolve().parent
+ 
+ 
+-def main(model_folder: Path, data_path: Path | None = None, headless: bool = True, device="cuda", simulator: str = "isaacsim", save_mp4: bool=False, disable_dr: bool = False, disable_obs_noise: bool = False, motion_list: list[int] = [25]):
++def _parse_hydra_overrides(hydra_overrides_json: str | None) -> list[str]:
++    if not hydra_overrides_json:
++        return []
++    parsed = json.loads(hydra_overrides_json)
++    if not isinstance(parsed, list) or not all(isinstance(item, str) for item in parsed):
++        raise ValueError("hydra_overrides_json must decode to a JSON list of strings.")
++    return parsed
++
++
++def _build_expert_qpos(obs_dict) -> np.ndarray:
++    return np.concatenate(
++        [
++            obs_dict["ref_body_pos"][:, 0].cpu().numpy(),
++            np.roll(obs_dict["ref_body_rots"][:, 0].cpu().numpy(), 1, axis=-1),
++            obs_dict["dof_pos"].cpu().numpy(),
++        ],
++        axis=-1,
++    )
++
++
++def _actor_representation(model, observation):
++    """Return the normalized actor input after the model's configured input filter."""
++    with torch.no_grad():
++        normalized = model._normalize(observation)
++        actor_filter = model._actor.input_filter
++        actor_filtered = actor_filter(normalized)
++
++        raw_history = None
++        conditioned_history = None
++        if isinstance(normalized, dict) and "history_actor" in normalized:
++            raw_history = normalized["history_actor"]
++            conditioned_history = raw_history
++
++            cfg = getattr(actor_filter, "cfg", None)
++            history_key = getattr(cfg, "history_key", None)
++            if (
++                history_key is not None
++                and history_key in normalized
++                and hasattr(actor_filter, "left_proj")
++                and hasattr(actor_filter, "right_proj")
++            ):
++                history = normalized[history_key]
++                left = actor_filter.left_proj(history)
++                right = actor_filter.right_proj(history)
++                if getattr(actor_filter, "product_mode", "vanilla") == "gated_quadratic":
++                    conditioned_history = left * (1.0 + actor_filter.quadratic_scale * right)
++                else:
++                    conditioned_history = left * right
++                conditioned_history = actor_filter.post_mlp(conditioned_history)
++                conditioned_history = actor_filter.output_norm(conditioned_history)
++
++    def to_numpy(value):
++        if value is None:
++            return None
++        return value.detach().float().cpu().numpy()
++
++    return {
++        "actor_filtered": to_numpy(actor_filtered),
++        "history_raw": to_numpy(raw_history),
++        "history_conditioned": to_numpy(conditioned_history),
++    }
++
++
++def _reset_env_to_motion_target(wrapped_env, obs_dict, simulator: str, num_envs: int):
++    wrapped_env.reset(to_numpy=False)
++
++    ref_body_rots = obs_dict["ref_body_rots"][0, 0].clone()
++    if simulator == "isaacsim":
++        ref_body_rots = ref_body_rots[[3, 0, 1, 2]]  # xyzw -> wxyz for correct humanoid facing in Isaac
++
++    ref_root_init_state = torch.cat(
++        [
++            obs_dict["ref_body_pos"][0, 0],
++            ref_body_rots,
++            obs_dict["ref_body_vels"][0, 0],
++            obs_dict["ref_body_angular_vels"][0, 0],
++        ]
++    )
++    dof_init_state = torch.zeros_like(wrapped_env._env.simulator.dof_state.view(num_envs, -1, 2)[0])
++    dof_init_state[..., 0] = obs_dict["dof_pos"][0]
++    dof_init_state[..., 1] = obs_dict["ref_dof_vel"][0]
++    target_states = {
++        "dof_states": dof_init_state,
++        "root_states": torch.stack([ref_root_init_state.clone() for _ in range(num_envs)]),
++    }
++    env_ids = torch.arange(num_envs, dtype=torch.long)
++    wrapped_env._env.reset_envs_idx(env_ids, target_states=target_states)
++    wrapped_env.step(
++        torch.zeros((num_envs, wrapped_env.action_space.shape[-1]), dtype=torch.float32),
++        to_numpy=False,
++    )
++    observation = wrapped_env._get_g1env_observation(to_numpy=False)
++    return observation
++
++
++def main(
++    model_folder: Path,
++    data_path: Path | None = None,
++    headless: bool = True,
++    device="cuda",
++    simulator: str = "isaacsim",
++    save_mp4: bool = False,
++    disable_dr: bool = False,
++    disable_obs_noise: bool = False,
++    motion_list: list[int] = [25],
++    hydra_overrides_json: str | None = None,
++    output_subdir: str = "tracking_inference",
++    video_name: str = "tracking.mp4",
++    max_steps: int = 100,
++    push_every_steps: int = 0,
++    push_start_step: int = 0,
++    command_switch_step: int = -1,
++    switch_motion_id: int | None = None,
++    save_representation_npz: bool = False,
++    representation_stride: int = 5,
++    representation_name: str = "actor_representation.npz",
++):
+     # motion_list: motion ids to evaluate (default [25])
+-    
++
+     model_folder = Path(model_folder)
+ 
+     model = load_model_from_checkpoint_dir(model_folder / "checkpoint", device=device)
+@@ -45,26 +162,32 @@ def main(model_folder: Path, data_path: Path | None = None, headless: bool = Tru
+             config["env"]["lafan_tail_path"] = str(default_path)
+         else:
+             config["env"]["lafan_tail_path"] = "data/lafan_29dof.pkl"
+-    # import ipdb; ipdb.set_trace()
++    config["env"].setdefault("hydra_overrides", [])
++    if simulator != "isaacsim":
++        config["env"]["hydra_overrides"] = [
++            override
++            for override in config["env"]["hydra_overrides"]
++            if not override.startswith("simulator.config.sim.physx.")
++        ]
+     config["env"]["hydra_overrides"].append("env.config.max_episode_length_s=10000")
+     config["env"]["hydra_overrides"].append(f"env.config.headless={headless}")
+     config["env"]["hydra_overrides"].append(f"simulator={simulator}")
++    config["env"]["hydra_overrides"].extend(_parse_hydra_overrides(hydra_overrides_json))
+     config["env"]["disable_domain_randomization"] = disable_dr
+     config["env"]["disable_obs_noise"] = disable_obs_noise
+ 
+-    # Outputs under model_folder/tracking_inference (sibling of exported/)
+-    output_dir = model_folder / "exported"
+-    output_dir.mkdir(parents=True, exist_ok=True)
++    export_dir = model_folder / "exported"
++    export_dir.mkdir(parents=True, exist_ok=True)
+     export_meta_policy_as_onnx(
+         model,
+-        output_dir,
++        export_dir,
+         f"{model_name}.onnx",
+         {"actor_obs": torch.randn(1, model._actor.input_filter.output_space.shape[0] + model.cfg.archi.z_dim)},
+-        z_dim=model.cfg.archi.z_dim,
+-        history=('history_actor' in model.cfg.archi.actor.input_filter.key),
++        z_dim=model.cfg.archi.z_dim,  # type: ignore[arg-type]
++        history=("history_actor" in model.cfg.archi.actor.input_filter.key),
+         use_29dof=True,
+     )
+-    print(f"Exported model to {output_dir}/{model_name}.onnx")
++    print(f"Exported model to {export_dir}/{model_name}.onnx")
+ 
+     def tracking_inference(obs) -> torch.Tensor:
+         z = model.backward_map(obs)
+@@ -78,92 +201,120 @@ def main(model_folder: Path, data_path: Path | None = None, headless: bool = Tru
+     num_envs = 1
+     wrapped_env, _ = env_cfg.build(num_envs)
+     env = wrapped_env._env
+-    print("="*80)
++    print("=" * 80)
+     print(env.config.simulator)
+-    print("-"*80)
+-    
+-    output_dir = model_folder / "tracking_inference"
++    print("-" * 80)
+ 
+-    for MOTION_ID in motion_list:
+-        env.set_is_evaluating(MOTION_ID)
+-        # we visulize the first env
+-        obs, obs_dict = get_backward_observation(env, 0, use_root_height_obs=use_root_height_obs)
++    output_dir = model_folder / "tracking_inference"
++    output_dir = model_folder / output_subdir
++    output_dir.mkdir(parents=True, exist_ok=True)
+ 
+-        expert_qpos = np.concatenate([
+-            obs_dict["ref_body_pos"][:,0].cpu().numpy(),
+-            np.roll(obs_dict["ref_body_rots"][:,0].cpu().numpy(),1,axis=-1),
+-            obs_dict["dof_pos"].cpu().numpy()
+-        ], axis=-1)
++    scenario_metadata = {
++        "motion_list": motion_list,
++        "hydra_overrides": config["env"]["hydra_overrides"],
++        "disable_dr": disable_dr,
++        "disable_obs_noise": disable_obs_noise,
++        "max_steps": max_steps,
++        "push_every_steps": push_every_steps,
++        "push_start_step": push_start_step,
++        "command_switch_step": command_switch_step,
++        "switch_motion_id": switch_motion_id,
++        "simulator": simulator,
++        "save_representation_npz": save_representation_npz,
++        "representation_stride": representation_stride,
++        "representation_name": representation_name,
++    }
++    (output_dir / "scenario_metadata.json").write_text(json.dumps(scenario_metadata, indent=2))
+ 
+-        # import ipdb; ipdb.set_trace()
++    representation_records = {
++        "actor_filtered": [],
++        "history_raw": [],
++        "history_conditioned": [],
++        "z": [],
++        "step": [],
++        "motion_id": [],
++    }
+ 
++    def prepare_motion_target(motion_id: int):
++        env.set_is_evaluating(motion_id)
++        obs, obs_dict = get_backward_observation(env, 0, use_root_height_obs=use_root_height_obs)
++        expert_qpos = _build_expert_qpos(obs_dict)
+         z = tracking_inference(tree_map(lambda x: x[1:], obs))
+-        output_dir.mkdir(parents=True, exist_ok=True)
+-        joblib.dump(z.cpu().numpy(), output_dir / f"zs_{MOTION_ID}.pkl")
+-        print(f"Saved zs_{MOTION_ID}.pkl")
+-        
+-    observation, info = wrapped_env.reset(to_numpy=False)
++        joblib.dump(z.cpu().numpy(), output_dir / f"zs_{motion_id}.pkl")
++        print(f"Saved zs_{motion_id}.pkl")
++        return z, obs_dict, expert_qpos
+ 
+-    # Root state: pos(3) + quat(4) + lin_vel(3) + ang_vel(3). Isaac expects quat as wxyz; motion lib uses xyzw.
+-    ref_body_rots = obs_dict["ref_body_rots"][0, 0].clone()
+-    if simulator == "isaacsim":
+-        ref_body_rots = ref_body_rots[[3, 0, 1, 2]]  # xyzw -> wxyz for correct humanoid facing in Isaac
+-    ref_root_init_state = torch.cat(
+-            [
+-                obs_dict["ref_body_pos"][0, 0],
+-                ref_body_rots,
+-                obs_dict["ref_body_vels"][0, 0],
+-                obs_dict["ref_body_angular_vels"][0, 0],
+-            ]
+-        )
+-    dof_init_state = torch.zeros_like(wrapped_env._env.simulator.dof_state.view(num_envs, -1, 2)[0])
+-    dof_init_state[..., 0] = obs_dict["dof_pos"][0]
+-    dof_init_state[..., 1] = obs_dict["ref_dof_vel"][0]
+-    target_states = {
+-        "dof_states": dof_init_state,
+-        "root_states": torch.stack([ref_root_init_state.clone() for i in range(num_envs)])
+-    }
+-    env_ids = torch.arange(num_envs, dtype=torch.long)
+-    observation, info = wrapped_env._env.reset_envs_idx(env_ids, target_states=target_states)
+-    # refresh_env_ids = wrapped_env._env.need_to_refresh_envs.nonzero(as_tuple=False).flatten()
+-    # wrapped_env._env.simulator.set_actor_root_state_tensor(refresh_env_ids, wrapped_env._env.target_robot_root_states)
+-    # wrapped_env._env.simulator.set_dof_state_tensor(refresh_env_ids, wrapped_env._env.target_robot_dof_state)
+-    # wrapped_env._env.need_to_refresh_envs[refresh_env_ids] = False
+-    observation_new, reward, terminated, truncated, info = wrapped_env.step(torch.zeros((num_envs, wrapped_env.action_space.shape[-1]), dtype=torch.float32), to_numpy=False)
+-    observation = wrapped_env._get_g1env_observation(to_numpy=False)
+-    qpos, qvel = wrapped_env._get_qpos_qvel(to_numpy=True)
+-    assert np.allclose(wrapped_env._env.simulator.dof_pos.clone().cpu(), expert_qpos[0,7:])
+-    joint_pos = [wrapped_env._env.simulator.dof_state[..., 0].clone().cpu().numpy()]
++    current_motion_id = motion_list[0]
++    z, obs_dict, expert_qpos = prepare_motion_target(current_motion_id)
++    observation = _reset_env_to_motion_target(wrapped_env, obs_dict, simulator=simulator, num_envs=num_envs)
++    assert np.allclose(wrapped_env._env.simulator.dof_pos.clone().cpu(), expert_qpos[0, 7:])
+ 
+-    # Visualization length: match inference length so expert and policy videos align
+-    episode_len = z.shape[0]
+-    episode_len = 100
++    # Visualization length: match inference length so expert and policy videos align.
++    episode_len = max_steps
+     print(f"Saving video for tracking ({episode_len} steps)")
+     if save_mp4:
+         rgb_renderer = IsaacRendererWithMuJoco(render_size=256)
+-        # Only render 1 + episode_len frames (same as frames list), not the full motion
+-        expert_video = rgb_renderer.from_qpos(expert_qpos[: 1 + episode_len])
+         frames = [rgb_renderer.render(wrapped_env._env, 0)[0]]
++        expert_video = None
++        if command_switch_step < 0:
++            expert_video = rgb_renderer.from_qpos(expert_qpos[: 1 + episode_len])
+ 
+     print(f"Running tracking inference for {episode_len} steps")
++    switch_done = False
+     for i in range(episode_len):
++        if command_switch_step >= 0 and not switch_done and i == command_switch_step and switch_motion_id is not None:
++            print(f"Switching command target from motion {current_motion_id} to {switch_motion_id} at step {i}")
++            current_motion_id = switch_motion_id
++            z, obs_dict, _ = prepare_motion_target(current_motion_id)
++            observation = _reset_env_to_motion_target(wrapped_env, obs_dict, simulator=simulator, num_envs=num_envs)
++            switch_done = True
++
++        if push_every_steps > 0 and i >= push_start_step and (i - push_start_step) % push_every_steps == 0:
++            print(f"Applying push disturbance at step {i}")
++            env._push_robots(torch.arange(num_envs, device=env.device))
++
+         print(f"Step {i} of {episode_len}")
++        if save_representation_npz and representation_stride > 0 and i % representation_stride == 0:
++            rep = _actor_representation(model, observation)
++            for key in ("actor_filtered", "history_raw", "history_conditioned"):
++                if rep[key] is not None:
++                    representation_records[key].append(rep[key][0])
++            representation_records["z"].append(z[i % len(z)].detach().float().cpu().numpy())
++            representation_records["step"].append(i)
++            representation_records["motion_id"].append(current_motion_id)
++
+         action = model.act(observation, z[i % len(z)].repeat(num_envs, 1), mean=True)
+         observation, reward, terminated, truncated, info = wrapped_env.step(action, to_numpy=False)
+-        joint_pos.append(wrapped_env._env.simulator.dof_state[..., 0].clone().cpu().numpy())
+         if save_mp4:
+             frames.append(rgb_renderer.render(wrapped_env._env, 0)[0])
+ 
+-    joint_pos = np.stack(joint_pos, axis=0).squeeze(1)
+-    stats = {}
+-    
+-    # breakpoint()  # use PYTHONBREAKPOINT=0 to disable, or install ipdb for a nicer debugger
++    if save_representation_npz and representation_records["actor_filtered"]:
++        video_path = output_dir / video_name
++        payload = {
++            "actor_filtered": np.stack(representation_records["actor_filtered"]),
++            "z": np.stack(representation_records["z"]),
++            "step": np.asarray(representation_records["step"], dtype=np.int64),
++            "motion_id": np.asarray(representation_records["motion_id"], dtype=np.int64),
++            "video_path": np.asarray(str(video_path)),
++            "model_folder": np.asarray(str(model_folder)),
++            "output_subdir": np.asarray(str(output_dir)),
++        }
++        if representation_records["history_raw"]:
++            payload["history_raw"] = np.stack(representation_records["history_raw"])
++        if representation_records["history_conditioned"]:
++            payload["history_conditioned"] = np.stack(representation_records["history_conditioned"])
++        representation_path = output_dir / representation_name
++        np.savez_compressed(representation_path, **payload)
++        print(f"Saved actor representations: {representation_path}")
+ 
+     if save_mp4:
+-        new_frames = []
+-        for a, b in zip(expert_video, frames):
+-            new_frames.append(np.concatenate([a, b], axis=1))
+-        video_path = output_dir / "tracking.mp4"
++        if expert_video is not None:
++            new_frames = []
++            for a, b in zip(expert_video, frames):
++                new_frames.append(np.concatenate([a, b], axis=1))
++        else:
++            new_frames = frames
++        video_path = output_dir / video_name
+         media.write_video(str(video_path), new_frames, fps=50)
+         print(f"Saved video for tracking: {video_path}")
+ 

@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "prism-robot"
+version = "0.1.0"
+description = "Polynomial representations for interaction-structured motor control"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "Seung Hyun Lee" },
+  { name = "Stella X. Yu" },
+]
+dependencies = [
+  "torch>=2.1",
+]
+
+[project.urls]
+Homepage = "https://lsh3163.github.io/prism/"
+Repository = "https://github.com/lsh3163/prism"
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8",
+]
+analysis = [
+  "matplotlib>=3.8",
+  "numpy>=1.26",
+  "scikit-learn>=1.4",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

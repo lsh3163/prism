@@ -1,0 +1,421 @@
+diff --git a/humanoidverse/agents/nn_filters.py b/humanoidverse/agents/nn_filters.py
+index 86b0b48..5d0bd07 100755
+--- a/humanoidverse/agents/nn_filters.py
++++ b/humanoidverse/agents/nn_filters.py
+@@ -44,6 +44,26 @@ class DictInputFilterConfig(BaseConfig):
+             return DictInputConcatFilter(space, self)
+ 
+ 
++class HistoryActorPRISMFilterConfig(BaseConfig):
++    """
++    Concatenate dictionary inputs while applying a PRISM-style conditioner
++    only to the `history_actor` branch before concatenation.
++    """
++
++    key: list[str] | tuple[str, ...]
++    history_key: str = "history_actor"
++    hidden_dim: int | None = None
++    output_dim: int | None = None
++    num_layers: int = 2
++    use_rmsnorm: bool = False
++    rmsnorm_eps: float = 1e-6
++    product_mode: str = "vanilla"
++    gate_scale_init: float = 1e-2
++
++    def build(self, space):
++        return HistoryActorPRISMConcatFilter(space, self)
++
++
+ class DictInputFilter(nn.Module):
+     """
+     Simple input filter that extracts a specific key from a dictionary input space.
+@@ -108,10 +128,121 @@ class DictInputConcatFilter(nn.Module):
+         return _input
+ 
+ 
++class _HistoryActorPostMLP(nn.Module):
++    def __init__(self, input_dim: int, output_dim: int, hidden_dim: int, num_layers: int) -> None:
++        super().__init__()
++        if num_layers < 1:
++            raise ValueError("num_layers must be >= 1")
++        if num_layers == 1:
++            self.net = nn.Linear(input_dim, output_dim)
++            return
++
++        layers: list[nn.Module] = [nn.Linear(input_dim, hidden_dim), nn.Mish()]
++        for _ in range(num_layers - 2):
++            layers.extend([nn.Linear(hidden_dim, hidden_dim), nn.Mish()])
++        layers.append(nn.Linear(hidden_dim, output_dim))
++        self.net = nn.Sequential(*layers)
++
++    def forward(self, x: torch.Tensor) -> torch.Tensor:
++        return self.net(x)
++
++
++class RMSNorm(nn.Module):
++    def __init__(self, hidden_size: int, eps: float = 1e-6) -> None:
++        super().__init__()
++        self.eps = eps
++        self.weight = nn.Parameter(torch.ones(hidden_size))
++
++    def forward(self, x: torch.Tensor) -> torch.Tensor:
++        x_fp32 = x.float()
++        rms = x_fp32.pow(2).mean(dim=-1, keepdim=True).add(self.eps).rsqrt()
++        return (x_fp32 * rms).to(dtype=x.dtype) * self.weight
++
++
++class HistoryActorPRISMConcatFilter(nn.Module):
++    """
++    Input filter that applies a learned polynomial feature transform to the
++    history branch only, then concatenates the full observation tuple.
++    """
++
++    def __init__(self, input_space, cfg: HistoryActorPRISMFilterConfig) -> None:
++        super().__init__()
++        self.cfg = cfg
++        self.output_space = self.get_output_space(input_space, cfg)
++
++        history_space = input_space.spaces[cfg.history_key]
++        history_dim = history_space.shape[0]
++        output_dim = cfg.output_dim or history_dim
++        hidden_dim = cfg.hidden_dim or output_dim
++
++        if cfg.product_mode not in {"vanilla", "gated_quadratic"}:
++            raise ValueError(f"Unsupported PRISM product_mode={cfg.product_mode!r}")
++        self.product_mode = cfg.product_mode
++        self.left_proj = nn.Linear(history_dim, hidden_dim)
++        self.right_proj = nn.Linear(history_dim, hidden_dim)
++        if cfg.product_mode == "gated_quadratic":
++            self.quadratic_scale = nn.Parameter(torch.full((hidden_dim,), float(cfg.gate_scale_init)))
++            nn.init.zeros_(self.right_proj.bias)
++        else:
++            self.register_parameter("quadratic_scale", None)
++        self.post_mlp = _HistoryActorPostMLP(hidden_dim, output_dim, hidden_dim, cfg.num_layers)
++        self.output_norm = RMSNorm(output_dim, eps=cfg.rmsnorm_eps) if cfg.use_rmsnorm else nn.Identity()
++
++    @classmethod
++    def get_output_space(cls, input_space, cfg: HistoryActorPRISMFilterConfig):
++        assert isinstance(input_space, gymnasium.spaces.Dict), "input_space must be a Dict space"
++        assert all(key in input_space.spaces for key in cfg.key), f"keys {cfg.key} not found in obs_space {input_space.spaces.keys()}"
++        assert cfg.history_key in cfg.key, f"history_key {cfg.history_key} must be included in key sequence {cfg.key}"
++        assert all(isinstance(input_space[key], gymnasium.spaces.Box) for key in cfg.key), "All keys must be Box spaces"
++        assert all(len(input_space[key].shape) == 1 for key in cfg.key), (
++            f"All key spaces must have 1D shape, got {[input_space[key].shape for key in cfg.key]}"
++        )
++
++        history_space = input_space.spaces[cfg.history_key]
++        history_dim = history_space.shape[0]
++        output_dim = cfg.output_dim or history_dim
++        first_dtype = input_space.spaces[cfg.key[0]].dtype
++        assert all(input_space.spaces[key].dtype == first_dtype for key in cfg.key), (
++            f"All keys must have the same dtype {input_space.spaces[cfg.key[0]].dtype}"
++        )
++
++        lows = []
++        highs = []
++        for key in cfg.key:
++            space = input_space.spaces[key]
++            if key == cfg.history_key:
++                lows.append(np.full((output_dim,), -np.inf, dtype=first_dtype))
++                highs.append(np.full((output_dim,), np.inf, dtype=first_dtype))
++            else:
++                lows.append(space.low)
++                highs.append(space.high)
++        return gymnasium.spaces.Box(low=np.concatenate(lows), high=np.concatenate(highs), dtype=first_dtype)
++
++    def forward(self, _input: torch.Tensor | dict[str, torch.Tensor]):
++        if not isinstance(_input, dict):
++            return _input
++
++        parts = []
++        for key in self.cfg.key:
++            value = _input[key]
++            if key == self.cfg.history_key:
++                left = self.left_proj(value)
++                right = self.right_proj(value)
++                if self.product_mode == "gated_quadratic":
++                    value = left * (1.0 + self.quadratic_scale * right)
++                else:
++                    value = left * right
++                value = self.post_mlp(value)
++                value = self.output_norm(value)
++            parts.append(value)
++        return torch.cat(parts, dim=-1)
++
++
+ NNFilter = tp.Annotated[
+     tp.Union[
+         IdentityInputFilterConfig,
+         DictInputFilterConfig,
++        HistoryActorPRISMFilterConfig,
+     ],
+     pydantic.Field(discriminator="name"),
+ ]
+diff --git a/humanoidverse/train.py b/humanoidverse/train.py
+index fc7a07c..69e8de3 100755
+--- a/humanoidverse/train.py
++++ b/humanoidverse/train.py
+@@ -11,11 +11,19 @@ from humanoidverse.agents.evaluations.humanoidverse_isaac import (
+ )
+ from humanoidverse.agents.envs.humanoidverse_isaac import load_expert_trajectories_from_motion_lib, HumanoidVerseIsaacConfig
+ 
+-os.environ["OMP_NUM_THREADS"] = "1"
++_DEFAULT_CPU_THREADS = os.getenv("BFM_OMP_NUM_THREADS") or os.getenv("SLURM_CPUS_PER_TASK") or "1"
++os.environ.setdefault("OMP_NUM_THREADS", _DEFAULT_CPU_THREADS)
++os.environ.setdefault("MKL_NUM_THREADS", os.environ["OMP_NUM_THREADS"])
++os.environ.setdefault("OPENBLAS_NUM_THREADS", os.environ["OMP_NUM_THREADS"])
++os.environ.setdefault("NUMEXPR_NUM_THREADS", os.environ["OMP_NUM_THREADS"])
+ 
+ import torch
+ 
+ torch.set_float32_matmul_precision("high")
++torch.set_num_threads(int(os.getenv("BFM_TORCH_NUM_THREADS", os.environ["OMP_NUM_THREADS"])))
++_interop_threads = os.getenv("BFM_TORCH_NUM_INTEROP_THREADS")
++if _interop_threads not in {None, ""}:
++    torch.set_num_interop_threads(int(_interop_threads))
+ 
+ import json
+ import time
+@@ -185,6 +193,234 @@ def init_wandb(cfg: TrainConfig):
+     wandb.init(entity=cfg.wandb_ename, project=cfg.wandb_pname, group=cfg.wandb_gname, name=wandb_name, config=wandb_config, dir="./_wandb")
+ 
+ 
++def _read_env_int(name: str, current: int) -> int:
++    value = os.getenv(name)
++    if value is None:
++        return current
++    return int(value)
++
++
++def _read_env_str(name: str, current: str) -> str:
++    value = os.getenv(name)
++    if value is None:
++        return current
++    return value
++
++
++def _read_env_bool(name: str, current: bool) -> bool:
++    value = os.getenv(name)
++    if value is None:
++        return current
++    value = value.strip().lower()
++    if value in {"1", "true", "yes", "on"}:
++        return True
++    if value in {"0", "false", "no", "off"}:
++        return False
++    raise ValueError(f"Unsupported boolean env override {name}={value!r}")
++
++
++def _read_env_optional_int(name: str) -> int | None:
++    value = os.getenv(name)
++    if value is None or value == "":
++        return None
++    return int(value)
++
++
++def apply_bfm_zero_env_overrides(cfg: "TrainConfig") -> "TrainConfig":
++    cfg = cfg.model_copy(
++        deep=True,
++        update={
++            "work_dir": _read_env_str("BFM_WORK_DIR", cfg.work_dir),
++            "seed": _read_env_int("BFM_SEED", cfg.seed),
++            "online_parallel_envs": _read_env_int("BFM_ONLINE_PARALLEL_ENVS", cfg.online_parallel_envs),
++            "num_env_steps": _read_env_int("BFM_NUM_ENV_STEPS", cfg.num_env_steps),
++            "update_agent_every": _read_env_int("BFM_UPDATE_AGENT_EVERY", cfg.update_agent_every),
++            "num_seed_steps": _read_env_int("BFM_NUM_SEED_STEPS", cfg.num_seed_steps),
++            "num_agent_updates": _read_env_int("BFM_NUM_AGENT_UPDATES", cfg.num_agent_updates),
++            "buffer_size": _read_env_int("BFM_BUFFER_SIZE", cfg.buffer_size),
++            "buffer_device": _read_env_str("BFM_BUFFER_DEVICE", cfg.buffer_device),
++            "eval_every_steps": _read_env_int("BFM_EVAL_EVERY_STEPS", cfg.eval_every_steps),
++            "log_every_updates": _read_env_int("BFM_LOG_EVERY_UPDATES", cfg.log_every_updates),
++            "checkpoint_every_steps": _read_env_int("BFM_CHECKPOINT_EVERY_STEPS", cfg.checkpoint_every_steps),
++            "use_wandb": _read_env_bool("BFM_USE_WANDB", cfg.use_wandb),
++        },
++    )
++
++    cfg = cfg.model_copy(
++        deep=True,
++        update={
++            "agent": cfg.agent.model_copy(
++                deep=True,
++                update={
++                    "compile": _read_env_bool("BFM_COMPILE", cfg.agent.compile),
++                },
++            ),
++        },
++    )
++
++    env_device = os.getenv("BFM_DEVICE")
++    if env_device is not None:
++        cfg = cfg.model_copy(
++            deep=True,
++            update={
++                "env": cfg.env.model_copy(deep=True, update={"device": env_device}),
++                "agent": cfg.agent.model_copy(
++                    deep=True,
++                    update={
++                        "model": cfg.agent.model.model_copy(deep=True, update={"device": env_device}),
++                    },
++                ),
++            },
++        )
++
++    eval_num_envs = os.getenv("BFM_EVAL_NUM_ENVS")
++    if eval_num_envs is not None:
++        eval_num_envs = int(eval_num_envs)
++        cfg = cfg.model_copy(
++            deep=True,
++            update={
++                "evaluations": [
++                    evaluation.model_copy(deep=True, update={"num_envs": eval_num_envs})
++                    if hasattr(evaluation, "num_envs")
++                    else evaluation
++                    for evaluation in cfg.evaluations
++                ]
++            },
++        )
++
++    env_hydra_overrides = list(cfg.env.hydra_overrides)
++    physx_num_threads = _read_env_optional_int("BFM_SIM_PHYSX_NUM_THREADS")
++    if physx_num_threads is not None:
++        env_hydra_overrides = [
++            override
++            for override in env_hydra_overrides
++            if not override.startswith("simulator.config.sim.physx.num_threads=")
++        ]
++        env_hydra_overrides.append(f"simulator.config.sim.physx.num_threads={physx_num_threads}")
++        cfg = cfg.model_copy(
++            deep=True,
++            update={
++                "env": cfg.env.model_copy(
++                    deep=True,
++                    update={"hydra_overrides": env_hydra_overrides},
++                )
++            },
++        )
++
++    core_hidden_dim = _read_env_optional_int("BFM_CORE_HIDDEN_DIM")
++    core_hidden_layers = _read_env_optional_int("BFM_CORE_HIDDEN_LAYERS")
++    if core_hidden_dim is not None or core_hidden_layers is not None:
++        archi = cfg.agent.model.archi
++
++        def maybe_scale_core(module_cfg):
++            update = {}
++            if core_hidden_dim is not None:
++                update["hidden_dim"] = core_hidden_dim
++            if core_hidden_layers is not None:
++                update["hidden_layers"] = core_hidden_layers
++            if not update:
++                return module_cfg
++            return module_cfg.model_copy(deep=True, update=update)
++
++        cfg = cfg.model_copy(
++            deep=True,
++            update={
++                "agent": cfg.agent.model_copy(
++                    deep=True,
++                    update={
++                        "model": cfg.agent.model.model_copy(
++                            deep=True,
++                            update={
++                                "archi": archi.model_copy(
++                                    deep=True,
++                                    update={
++                                        "f": maybe_scale_core(archi.f),
++                                        "actor": maybe_scale_core(archi.actor),
++                                        "critic": maybe_scale_core(archi.critic),
++                                        "aux_critic": maybe_scale_core(archi.aux_critic),
++                                    },
++                                ),
++                            },
++                        ),
++                    },
++                ),
++            },
++        )
++
++    history_conditioner_type = os.getenv("BFM_HISTORY_CONDITIONER_TYPE", "linear").strip().lower()
++    if history_conditioner_type not in {"linear", "prism"}:
++        raise ValueError(f"Unsupported BFM_HISTORY_CONDITIONER_TYPE={history_conditioner_type!r}")
++
++    if history_conditioner_type == "prism":
++        from humanoidverse.agents.nn_filters import DictInputFilterConfig, HistoryActorPRISMFilterConfig
++
++        history_hidden_dim = _read_env_optional_int("BFM_HISTORY_CONDITIONER_HIDDEN_DIM")
++        history_output_dim = _read_env_optional_int("BFM_HISTORY_CONDITIONER_OUTPUT_DIM")
++        history_num_layers = _read_env_int("BFM_HISTORY_CONDITIONER_NUM_LAYERS", 2)
++        history_use_rmsnorm = _read_env_bool("BFM_HISTORY_CONDITIONER_USE_RMSNORM", False)
++        history_rmsnorm_eps = float(os.getenv("BFM_HISTORY_CONDITIONER_RMSNORM_EPS", "1e-6"))
++        history_product_mode = os.getenv("BFM_HISTORY_CONDITIONER_PRODUCT_MODE", "vanilla").strip().lower()
++        history_gate_scale_init = float(os.getenv("BFM_HISTORY_CONDITIONER_GATE_SCALE_INIT", "1e-2"))
++
++        def maybe_prism_filter(input_filter):
++            if not isinstance(input_filter, DictInputFilterConfig):
++                return input_filter
++            keys = [input_filter.key] if isinstance(input_filter.key, str) else list(input_filter.key)
++            if "history_actor" not in keys:
++                return input_filter
++            return HistoryActorPRISMFilterConfig(
++                key=keys,
++                history_key="history_actor",
++                hidden_dim=history_hidden_dim,
++                output_dim=history_output_dim,
++                num_layers=history_num_layers,
++                use_rmsnorm=history_use_rmsnorm,
++                rmsnorm_eps=history_rmsnorm_eps,
++                product_mode=history_product_mode,
++                gate_scale_init=history_gate_scale_init,
++            )
++
++        archi = cfg.agent.model.archi
++        cfg = cfg.model_copy(
++            deep=True,
++            update={
++                "agent": cfg.agent.model_copy(
++                    deep=True,
++                    update={
++                        "model": cfg.agent.model.model_copy(
++                            deep=True,
++                            update={
++                                "archi": archi.model_copy(
++                                    deep=True,
++                                    update={
++                                        "f": archi.f.model_copy(
++                                            deep=True,
++                                            update={"input_filter": maybe_prism_filter(archi.f.input_filter)},
++                                        ),
++                                        "actor": archi.actor.model_copy(
++                                            deep=True,
++                                            update={"input_filter": maybe_prism_filter(archi.actor.input_filter)},
++                                        ),
++                                        "critic": archi.critic.model_copy(
++                                            deep=True,
++                                            update={"input_filter": maybe_prism_filter(archi.critic.input_filter)},
++                                        ),
++                                        "aux_critic": archi.aux_critic.model_copy(
++                                            deep=True,
++                                            update={"input_filter": maybe_prism_filter(archi.aux_critic.input_filter)},
++                                        ),
++                                    },
++                                ),
++                            },
++                        ),
++                    },
++                ),
++            },
++        )
++
++    return cfg
++
++
+ class Workspace:
+     def __init__(self, cfg: TrainConfig) -> None:
+         self.cfg = cfg
+@@ -717,6 +953,7 @@ def train_bfm_zero():
+         eval_every_steps=9600000,
+         tags={},
+     )
++    cfg = apply_bfm_zero_env_overrides(cfg)
+     workspace = cfg.build()
+     workspace.train()
+ 

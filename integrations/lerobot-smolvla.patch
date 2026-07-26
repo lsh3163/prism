@@ -1,0 +1,184 @@
+diff --git a/src/lerobot/policies/smolvla/configuration_smolvla.py b/src/lerobot/policies/smolvla/configuration_smolvla.py
+index 6d5288d..00e9d41 100644
+--- a/src/lerobot/policies/smolvla/configuration_smolvla.py
++++ b/src/lerobot/policies/smolvla/configuration_smolvla.py
+@@ -70,6 +70,14 @@ class SmolVLAConfig(PreTrainedConfig):
+     train_expert_only: bool = True
+     train_state_proj: bool = True
+ 
++    # Proprioceptive state conditioner
++    state_conditioner_type: str = "linear"  # linear | mlp | prism
++    state_conditioner_hidden_dim: int | None = None
++    state_conditioner_num_layers: int = 2
++    state_conditioner_use_rmsnorm: bool = False
++    state_conditioner_product_mode: str = "vanilla"  # vanilla | gated_quadratic
++    state_conditioner_gate_scale_init: float = 1e-2
++
+     # Training presets
+     optimizer_lr: float = 1e-4
+     optimizer_betas: tuple[float, float] = (0.9, 0.95)
+@@ -119,6 +127,20 @@ class SmolVLAConfig(PreTrainedConfig):
+             raise NotImplementedError(
+                 "`use_delta_joint_actions_aloha` is used by smolvla for aloha real models. It is not ported yet in LeRobot."
+             )
++        if self.state_conditioner_type not in {"linear", "mlp", "prism"}:
++            raise ValueError(
++                f"Unsupported state_conditioner_type={self.state_conditioner_type!r}. "
++                "Expected one of: linear, mlp, prism."
++            )
++        if self.state_conditioner_num_layers < 1:
++            raise ValueError(
++                f"`state_conditioner_num_layers` must be >= 1, got {self.state_conditioner_num_layers}."
++            )
++        if self.state_conditioner_product_mode not in {"vanilla", "gated_quadratic"}:
++            raise ValueError(
++                f"Unsupported state_conditioner_product_mode={self.state_conditioner_product_mode!r}. "
++                "Expected one of: vanilla, gated_quadratic."
++            )
+ 
+     def validate_features(self) -> None:
+         for i in range(self.empty_cameras):
+diff --git a/src/lerobot/policies/smolvla/modeling_smolvla.py b/src/lerobot/policies/smolvla/modeling_smolvla.py
+index 8fd60c1..f4f19bd 100644
+--- a/src/lerobot/policies/smolvla/modeling_smolvla.py
++++ b/src/lerobot/policies/smolvla/modeling_smolvla.py
+@@ -538,6 +538,81 @@ def pad_tensor(tensor, max_len, pad_value=0):
+     return padded_tensor
+ 
+ 
++class RMSNorm(nn.Module):
++    """Minimal RMSNorm operating on the last dimension."""
++
++    def __init__(self, dim: int, eps: float = 1e-6):
++        super().__init__()
++        self.weight = nn.Parameter(torch.ones(dim))
++        self.eps = eps
++
++    def forward(self, x: Tensor) -> Tensor:
++        rms = x.pow(2).mean(dim=-1, keepdim=True)
++        x = x * torch.rsqrt(rms + self.eps)
++        return x * self.weight
++
++
++class MLPStateConditioner(nn.Module):
++    """State-only conditioner used for proprioception baselines."""
++
++    def __init__(self, input_dim: int, output_dim: int, hidden_dim: int, num_layers: int):
++        super().__init__()
++        if num_layers < 1:
++            raise ValueError(f"num_layers must be >= 1, got {num_layers}")
++
++        dims = [input_dim]
++        if num_layers == 1:
++            dims.append(output_dim)
++        else:
++            dims.extend([hidden_dim] * (num_layers - 1))
++            dims.append(output_dim)
++
++        layers: list[nn.Module] = []
++        for idx in range(len(dims) - 1):
++            layers.append(nn.Linear(dims[idx], dims[idx + 1]))
++            if idx < len(dims) - 2:
++                layers.append(nn.SiLU())
++        self.net = nn.Sequential(*layers)
++
++    def forward(self, state: Tensor) -> Tensor:
++        return self.net(state)
++
++
++class PRISMStateConditioner(nn.Module):
++    """Apply the PRISM/poly-kernel transform on proprioception only."""
++
++    def __init__(
++        self,
++        input_dim: int,
++        output_dim: int,
++        hidden_dim: int,
++        num_layers: int,
++        product_mode: str = "vanilla",
++        gate_scale_init: float = 1e-2,
++    ):
++        super().__init__()
++        if product_mode not in {"vanilla", "gated_quadratic"}:
++            raise ValueError(f"Unsupported product_mode={product_mode!r}")
++        self.product_mode = product_mode
++        self.left_proj = nn.Linear(input_dim, hidden_dim)
++        self.right_proj = nn.Linear(input_dim, hidden_dim)
++        if product_mode == "gated_quadratic":
++            self.quadratic_scale = nn.Parameter(torch.full((hidden_dim,), float(gate_scale_init)))
++            nn.init.zeros_(self.right_proj.bias)
++        else:
++            self.register_parameter("quadratic_scale", None)
++        self.post_mlp = MLPStateConditioner(hidden_dim, output_dim, hidden_dim, num_layers)
++
++    def forward(self, state: Tensor) -> Tensor:
++        left = self.left_proj(state)
++        right = self.right_proj(state)
++        if self.product_mode == "gated_quadratic":
++            poly_features = left * (1.0 + self.quadratic_scale * right)
++        else:
++            poly_features = left * right
++        return self.post_mlp(poly_features)
++
++
+ class VLAFlowMatching(nn.Module):
+     """
+     SmolVLA
+@@ -580,8 +655,34 @@ class VLAFlowMatching(nn.Module):
+             expert_width_multiplier=self.config.expert_width_multiplier,
+             device=self.config.device if self.config.device is not None else "auto",
+         )
+-        self.state_proj = nn.Linear(
+-            self.config.max_state_dim, self.vlm_with_expert.config.text_config.hidden_size
++        state_output_dim = self.vlm_with_expert.config.text_config.hidden_size
++        state_hidden_dim = (
++            self.config.state_conditioner_hidden_dim
++            if self.config.state_conditioner_hidden_dim is not None
++            else state_output_dim
++        )
++        if self.config.state_conditioner_type == "linear":
++            self.state_proj = nn.Linear(self.config.max_state_dim, state_output_dim)
++        elif self.config.state_conditioner_type == "mlp":
++            self.state_proj = MLPStateConditioner(
++                self.config.max_state_dim,
++                state_output_dim,
++                state_hidden_dim,
++                self.config.state_conditioner_num_layers,
++            )
++        elif self.config.state_conditioner_type == "prism":
++            self.state_proj = PRISMStateConditioner(
++                self.config.max_state_dim,
++                state_output_dim,
++                state_hidden_dim,
++                self.config.state_conditioner_num_layers,
++                self.config.state_conditioner_product_mode,
++                self.config.state_conditioner_gate_scale_init,
++            )
++        else:
++            raise ValueError(f"Unsupported state_conditioner_type={self.config.state_conditioner_type!r}")
++        self.state_output_norm = (
++            RMSNorm(state_output_dim) if self.config.state_conditioner_use_rmsnorm else nn.Identity()
+         )
+         self.action_in_proj = nn.Linear(self.config.max_action_dim, self.vlm_with_expert.expert_hidden_size)
+         self.action_out_proj = nn.Linear(self.vlm_with_expert.expert_hidden_size, self.config.max_action_dim)
+@@ -615,8 +716,9 @@ class VLAFlowMatching(nn.Module):
+         return self.config.rtc_config is not None and self.config.rtc_config.enabled
+ 
+     def set_requires_grad(self):
+-        for params in self.state_proj.parameters():
+-            params.requires_grad = self.config.train_state_proj
++        for module in (self.state_proj, self.state_output_norm):
++            for params in module.parameters():
++                params.requires_grad = self.config.train_state_proj
+ 
+     def sample_noise(self, shape, device):
+         noise = torch.normal(
+@@ -701,7 +803,7 @@ class VLAFlowMatching(nn.Module):
+         num_lang_embs = lang_emb.shape[1]
+         att_masks += [0] * num_lang_embs
+ 
+-        state_emb = self.state_proj(state)
++        state_emb = self.state_output_norm(self.state_proj(state))
+         state_emb = state_emb[:, None, :] if state_emb.ndim == 2 else state_emb
+         embs.append(state_emb)
+         bsize = state_emb.shape[0]
