@@ -1,51 +1,99 @@
-# PRISM: Polynomial Representations for Interaction-Structured Motor Control
+<h1 align="center">PRISM</h1>
 
-PRISM is a compact, learnable polynomial representation for robot policies. It
-exposes interactions among deployment-available proprioceptive variables
-without adding force sensing, tactile input, contact labels, privileged
-physical parameters, or a new low-level controller.
+<h3 align="center">
+  Polynomial Representations for Interaction-Structured Motor Control
+</h3>
 
-This repository contains:
+<p align="center">
+  <strong>Seung Hyun Lee</strong> &middot; <strong>Stella X. Yu</strong>
+</p>
 
-- a standalone PyTorch implementation of the PRISM conditioner;
-- patches for the exact BFM-Zero and SmolVLA integration points used in our
-  stronger-backbone experiments;
-- paper-aligned training configurations and evaluation details; and
-- scripts for reproducing the representation analysis.
+<p align="center">
+  <a href="https://lsh3163.github.io/prism/"><strong>Project Page</strong></a>
+  &nbsp;&middot;&nbsp;
+  <a href="https://lsh3163.github.io/prism/assets/prism/prism-paper.pdf"><strong>Paper PDF</strong></a>
+  &nbsp;&middot;&nbsp;
+  <a href="RESULTS.md"><strong>Results</strong></a>
+  &nbsp;&middot;&nbsp;
+  <a href="REPRODUCIBILITY.md"><strong>Reproducibility</strong></a>
+</p>
 
-Project page: <https://lsh3163.github.io/prism/>
+<p align="center">
+  <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-315d45">
+  <img alt="PyTorch 2.1+" src="https://img.shields.io/badge/PyTorch-2.1%2B-cb6d3f">
+  <img alt="Backbones: BFM-Zero and SmolVLA" src="https://img.shields.io/badge/Backbones-BFM--Zero%20%7C%20SmolVLA-486b3e">
+</p>
+
+> **Motivation.** Robot policies observe individual state coordinates, while
+> physical behavior depends on how joint, velocity, command, contact, and load
+> effects interact. PRISM makes these couplings learnable from deployable
+> proprioception, without adding force sensors, tactile input, contact labels,
+> or privileged physical parameters.
+
+PRISM is a compact, learnable polynomial representation for motor-control
+policies. It changes only the proprioceptive representation presented to the
+policy backbone and can be inserted into both reinforcement-learning and
+vision-language-action policies.
 
 ## Method
 
-For an input \(x\), the paper-facing degree-2 model computes
+<p align="center">
+  <img
+    src="assets/prism-method.svg"
+    width="100%"
+    alt="PRISM maps proprioceptive history into learned linear and interaction factors before the policy backbone."
+  >
+</p>
 
-\[
-h_1 = W_1x+b_1,\qquad
-h_2 = h_1 \odot \left(1+\alpha_2\odot(W_2x+b_2)\right),
-\]
+For proprioceptive input $x$, PRISM forms a first-order path and recursively
+introduces learned interaction factors:
 
-followed by a learned projection and, in the stronger-backbone experiments,
-RMSNorm. The per-feature scale \(\alpha_2\) is initialized to \(10^{-2}\) and
-optimized end-to-end. This starts the representation close to a linear map
-while allowing each latent feature to learn how strongly it uses quadratic
-interactions.
+$$
+\begin{aligned}
+h_1 &= W_1x+b_1, \\
+h_k &= h_{k-1}\odot
+\left(1+\alpha_k\odot(W_kx+b_k)\right),
+\qquad k=2,\ldots,K, \\
+z &= \operatorname{RMSNorm}\!\left(\operatorname{MLP}(h_K)\right).
+\end{aligned}
+$$
 
-The standalone module supports degree \(K\):
+Each $\alpha_k$ is learned independently for every latent feature. Initializing
+these scales near zero preserves a strong first-order path at the start of
+training, while optimization determines where higher-order interactions are
+useful. Expanding the recurrence yields a representation of degree at most
+$K$. The reported stronger-backbone experiments use $K=2$; the implementation
+also supports higher degrees and a direct factorized-polynomial mode.
 
-\[
-h_k=h_{k-1}\odot\left(1+\alpha_k\odot(W_kx+b_k)\right),
-\quad k=2,\ldots,K.
-\]
+## Stronger-Backbone Results
 
-The resulting representation has degree at most \(K\). The reported BFM-Zero
-and SmolVLA experiments use `degree=2`.
+PRISM improves both backbones while remaining substantially closer in size to
+the original model than the larger-capacity control.
 
-## Install
+| Backbone | Evaluation metric | Baseline | Larger control | **PRISM** |
+|---|---|---:|---:|---:|
+| BFM-Zero | Mean tracking EMD $\downarrow$ | 1.269 | 1.264 | **1.224** |
+| SmolVLA | LIBERO Avg. success $\uparrow$ | 63.50 | 64.90 | **66.55** |
+
+BFM-Zero results use the aligned `9.6M` checkpoint and average tracking EMD
+over nominal, low-friction, and payload-mass evaluations. SmolVLA results use
+the `80K` checkpoint and the official LIBERO multi-task `eval50` protocol
+(`2,000` episodes total). Every run uses seed `1000`.
+
+See [RESULTS.md](RESULTS.md) for scenario- and suite-level results, parameter
+counts, and evaluation details.
+
+## Quick Start
 
 ```bash
+git clone https://github.com/lsh3163/prism.git
+cd prism
+
 python -m venv .venv
 source .venv/bin/activate
+python -m pip install --upgrade pip
 pip install -e ".[test]"
+
 python -m unittest discover -s tests -v
 ```
 
@@ -61,47 +109,83 @@ conditioner = PRISMConditioner(
     output_dim=1152,
     hidden_dim=1152,
     degree=2,
-    post_mlp_layers=2,
+    interaction_mode="gated",
     gate_init=1e-2,
+    post_mlp_layers=2,
     use_rmsnorm=True,
 )
 
 proprioception = torch.randn(8, 32)
 conditioned_state = conditioner(proprioception)
+assert conditioned_state.shape == (8, 1152)
 ```
 
-`conditioner.polynomial_features(x)` returns the latent polynomial
-representation before the downstream projection.
+Use `conditioner.polynomial_features(proprioception)` to inspect the learned
+polynomial features before the downstream projection.
 
 ## Backbone Integrations
 
-The integration patches are intentionally based on pinned upstream commits
-instead of vendoring either project:
+The release provides small patches against pinned upstream commits instead of
+vendoring either backbone.
 
-| Backbone | Upstream commit | PRISM insertion point |
+| Backbone | Pinned upstream commit | PRISM insertion point |
 |---|---|---|
-| BFM-Zero | `b87916f52d3d9e6eeba484f5e80851a235191837` | deployable `history_actor` branch |
-| LeRobot / SmolVLA | `2d7a42011a4f8e05a8c85d5fb908da258d4cc7b1` | proprioceptive `state_proj` branch |
+| [BFM-Zero](https://github.com/LeCAR-Lab/BFM-Zero) | `b87916f52d` | Deployable `history_actor` stream |
+| [LeRobot / SmolVLA](https://github.com/huggingface/lerobot) | `2d7a42011a` | Proprioceptive `state_proj` branch |
 
-See [integrations/README.md](integrations/README.md) for patch commands and
-[REPRODUCIBILITY.md](REPRODUCIBILITY.md) for the paper-aligned settings.
+The BFM-Zero patch leaves the actor and simulator interface unchanged. The
+SmolVLA patch replaces only the proprioceptive projection; the pretrained VLM,
+visual encoder, and action-expert interfaces remain intact.
 
-## Results
+Follow [integrations/README.md](integrations/README.md) for exact patch
+commands.
 
-The aligned stronger-backbone results are summarized in
-[RESULTS.md](RESULTS.md). Checkpoints and datasets are not included in this
-source release because they are governed by their respective upstream
-projects.
+## Repository Layout
+
+```text
+prism/
+|-- src/prism_robot/       # Standalone PyTorch implementation
+|-- tests/                 # Unit tests for degree, gradients, and RMSNorm
+|-- integrations/          # BFM-Zero and SmolVLA source patches
+|-- configs/               # Paper-aligned PRISM settings
+|-- analysis/              # Representation-analysis utilities
+|-- RESULTS.md             # Aligned quantitative results
+`-- REPRODUCIBILITY.md     # Training and evaluation protocols
+```
+
+Checkpoints, datasets, simulator assets, and complete upstream repositories are
+not redistributed here. Their installation and usage remain governed by the
+corresponding upstream projects.
+
+## Reproducing the Paper Results
+
+Start with the following documents:
+
+- [REPRODUCIBILITY.md](REPRODUCIBILITY.md) specifies common controls, training
+  settings, checkpoints, and evaluation protocols.
+- [integrations/README.md](integrations/README.md) applies the exact
+  backbone-specific source changes.
+- [analysis/README.md](analysis/README.md) reproduces the representation
+  analysis from exported policy features.
+- [RESULTS.md](RESULTS.md) records the aligned quantitative comparisons.
 
 ## Citation
 
-The archival paper entry will be added after the arXiv update. Until then,
-please cite the project title and authors:
+The archival identifier will be added after the arXiv release. Until then,
+please cite:
 
-> Seung Hyun Lee and Stella X. Yu. *PRISM: Polynomial Representations for
-> Interaction-Structured Motor Control*. 2026.
+```bibtex
+@misc{lee2026prism,
+  title  = {PRISM: Polynomial Representations for Interaction-Structured Motor Control},
+  author = {Lee, Seung Hyun and Yu, Stella X.},
+  year   = {2026},
+  url    = {https://lsh3163.github.io/prism/}
+}
+```
 
 ## Licensing
 
-The standalone PRISM source and the integration patches have different
-licensing considerations. Read [NOTICE.md](NOTICE.md) before redistribution.
+A top-level license for the standalone PRISM implementation is being
+finalized. The integration patches remain subject to their respective
+BFM-Zero and LeRobot upstream terms. See [NOTICE.md](NOTICE.md) before
+redistribution.
