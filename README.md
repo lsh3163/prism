@@ -37,14 +37,6 @@ vision-language-action policies.
 
 ## Method
 
-<p align="center">
-  <img
-    src="assets/prism-method.svg"
-    width="100%"
-    alt="PRISM maps proprioceptive history into learned linear and interaction factors before the policy backbone."
-  >
-</p>
-
 For proprioceptive input $x$, PRISM forms a first-order path and recursively
 introduces learned interaction factors:
 
