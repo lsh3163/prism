@@ -54,7 +54,7 @@ h_1 &= W_1x+b_1, \\
 h_k &= h_{k-1}\odot
 \left(1+\alpha_k\odot(W_kx+b_k)\right),
 \qquad k=2,\ldots,K, \\
-z &= \operatorname{RMSNorm}\!\left(\operatorname{MLP}(h_K)\right).
+z &= \mathrm{RMSNorm}\left(\mathrm{MLP}(h_K)\right).
 \end{aligned}
 $$
 
@@ -125,20 +125,106 @@ polynomial features before the downstream projection.
 
 ## Backbone Integrations
 
-The release provides small patches against pinned upstream commits instead of
-vendoring either backbone.
+The release provides small patches against supported upstream revisions
+instead of vendoring either backbone.
 
-| Backbone | Pinned upstream commit | PRISM insertion point |
+| Backbone | PRISM changes | Kept unchanged |
 |---|---|---|
-| [BFM-Zero](https://github.com/LeCAR-Lab/BFM-Zero) | `b87916f52d` | Deployable `history_actor` stream |
-| [LeRobot / SmolVLA](https://github.com/huggingface/lerobot) | `2d7a42011a` | Proprioceptive `state_proj` branch |
+| [BFM-Zero](https://github.com/LeCAR-Lab/BFM-Zero) | Deployable `history_actor` representation | Actor core, actions, simulator, and objective |
+| [LeRobot / SmolVLA](https://github.com/huggingface/lerobot) | Proprioceptive `state_proj` branch | VLM, visual path, and action-expert interface |
 
 The BFM-Zero patch leaves the actor and simulator interface unchanged. The
 SmolVLA patch replaces only the proprioceptive projection; the pretrained VLM,
 visual encoder, and action-expert interfaces remain intact.
 
 Follow [integrations/README.md](integrations/README.md) for exact patch
-commands.
+commands and supported upstream revisions.
+
+## Reproduce BFM-Zero
+
+First complete the upstream
+[BFM-Zero installation](https://github.com/LeCAR-Lab/BFM-Zero), including its
+Isaac Sim environment and LAFAN motion data. Check out the supported revision
+and apply the training and evaluation patches using
+[integrations/README.md](integrations/README.md).
+
+From the patched BFM-Zero checkout, launch the paper-aligned PRISM run with:
+
+```bash
+export PRISM_ROOT=/absolute/path/to/prism
+
+set -a
+source "$PRISM_ROOT/configs/bfm_zero_prism.env"
+set +a
+
+uv run python -m humanoidverse.train
+```
+
+This recipe uses seed `1000`, `512` parallel training environments, and `9.6M`
+environment steps. Evaluate an aligned checkpoint on all LAFAN motions with
+the released evaluator:
+
+```bash
+uv run python -m humanoidverse.tracking_eval \
+  --model-folder=/path/to/bfm-zero-run \
+  --data-path=/path/to/lafan_29dof.pkl \
+  --num-envs=128 \
+  --output-subdir=tracking_eval_nominal \
+  --eval-log-name=humanoidverse_tracking_eval_nominal
+```
+
+The low-friction and payload-mass overrides used for the paper are listed in
+[REPRODUCIBILITY.md](REPRODUCIBILITY.md#bfm-zero), together with the baseline
+and larger-capacity control settings.
+
+## Reproduce SmolVLA on LIBERO
+
+Install [LeRobot](https://github.com/huggingface/lerobot) with its LIBERO
+dependencies, then apply the SmolVLA patch using
+[integrations/README.md](integrations/README.md). The reported experiment is
+one multi-task policy trained jointly on Spatial, Object, Goal, and Long:
+
+```bash
+lerobot-train \
+  --policy.type=smolvla \
+  --policy.load_vlm_weights=true \
+  --policy.freeze_vision_encoder=true \
+  --policy.train_expert_only=true \
+  --policy.state_conditioner_type=prism \
+  --policy.state_conditioner_num_layers=2 \
+  --policy.state_conditioner_product_mode=gated_quadratic \
+  --policy.state_conditioner_gate_scale_init=1e-2 \
+  --policy.state_conditioner_use_rmsnorm=true \
+  --policy.scheduler_warmup_steps=100 \
+  --policy.scheduler_decay_steps=100000 \
+  --dataset.repo_id=HuggingFaceVLA/libero \
+  --env.type=libero \
+  --env.task=libero_spatial,libero_object,libero_goal,libero_10 \
+  --batch_size=64 \
+  --num_workers=8 \
+  --seed=1000 \
+  --steps=100000 \
+  --policy.device=cuda \
+  --output_dir=/path/to/smolvla-prism
+```
+
+Evaluate the aligned `80K` checkpoint with the official `eval50` protocol:
+
+```bash
+lerobot-eval \
+  --policy.path=/path/to/smolvla-prism/checkpoints/080000/pretrained_model \
+  --env.type=libero \
+  --env.task=libero_spatial,libero_object,libero_goal,libero_10 \
+  --eval.n_episodes=50 \
+  --eval.batch_size=1 \
+  --env.max_parallel_tasks=1 \
+  --policy.device=cuda \
+  --seed=1000 \
+  --output_dir=/path/to/smolvla-prism-eval50
+```
+
+See [REPRODUCIBILITY.md](REPRODUCIBILITY.md) for the full optimizer,
+checkpoint, hardware, dataset, scenario, and capacity-control settings.
 
 ## Repository Layout
 
@@ -157,17 +243,9 @@ Checkpoints, datasets, simulator assets, and complete upstream repositories are
 not redistributed here. Their installation and usage remain governed by the
 corresponding upstream projects.
 
-## Reproducing the Paper Results
-
-Start with the following documents:
-
-- [REPRODUCIBILITY.md](REPRODUCIBILITY.md) specifies common controls, training
-  settings, checkpoints, and evaluation protocols.
-- [integrations/README.md](integrations/README.md) applies the exact
-  backbone-specific source changes.
-- [analysis/README.md](analysis/README.md) reproduces the representation
-  analysis from exported policy features.
-- [RESULTS.md](RESULTS.md) records the aligned quantitative comparisons.
+The representation analysis is documented in
+[analysis/README.md](analysis/README.md), and the aligned quantitative
+comparisons are recorded in [RESULTS.md](RESULTS.md).
 
 ## Citation
 
