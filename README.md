@@ -11,7 +11,9 @@
 <p align="center">
   <a href="https://lsh3163.github.io/prism/"><strong>Project Page</strong></a>
   &nbsp;&middot;&nbsp;
-  <a href="https://lsh3163.github.io/prism/assets/prism/prism-paper.pdf"><strong>Paper PDF</strong></a>
+  <a href="https://arxiv.org/abs/2607.23473"><strong>arXiv</strong></a>
+  &nbsp;&middot;&nbsp;
+  <a href="https://arxiv.org/pdf/2607.23473"><strong>Paper PDF</strong></a>
   &nbsp;&middot;&nbsp;
   <a href="RESULTS.md"><strong>Results</strong></a>
   &nbsp;&middot;&nbsp;
@@ -22,6 +24,7 @@
   <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-315d45">
   <img alt="PyTorch 2.1+" src="https://img.shields.io/badge/PyTorch-2.1%2B-cb6d3f">
   <img alt="Backbones: BFM-Zero and SmolVLA" src="https://img.shields.io/badge/Backbones-BFM--Zero%20%7C%20SmolVLA-486b3e">
+  <a href="https://arxiv.org/abs/2607.23473"><img alt="arXiv 2607.23473" src="https://img.shields.io/badge/arXiv-2607.23473-b31b1b"></a>
 </p>
 
 > **Motivation.** Robot policies observe individual state coordinates, while
@@ -241,15 +244,14 @@ comparisons are recorded in [RESULTS.md](RESULTS.md).
 
 ## Citation
 
-The archival identifier will be added after the arXiv release. Until then,
-please cite:
-
 ```bibtex
-@misc{lee2026prism,
-  title  = {PRISM: Polynomial Representations for Interaction-Structured Motor Control},
+@article{lee2026prism,
+  title = {PRISM: Polynomial Representations for Interaction-Structured Motor Control},
   author = {Lee, Seung Hyun and Yu, Stella X.},
-  year   = {2026},
-  url    = {https://lsh3163.github.io/prism/}
+  journal = {arXiv preprint arXiv:2607.23473},
+  year = {2026},
+  doi = {10.48550/arXiv.2607.23473},
+  url = {https://arxiv.org/abs/2607.23473}
 }
 ```
 
