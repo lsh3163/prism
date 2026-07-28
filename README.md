@@ -27,6 +27,20 @@
   <a href="https://arxiv.org/abs/2607.23473"><img alt="arXiv 2607.23473" src="https://img.shields.io/badge/arXiv-2607.23473-b31b1b"></a>
 </p>
 
+<p align="center">
+  <a href="https://lsh3163.github.io/prism/">
+    <img src="assets/prism-method.png" width="100%"
+      alt="PRISM integration in reinforcement-learning and imitation-learning policies">
+  </a>
+</p>
+
+<p align="center">
+  <em>
+    PRISM transforms the proprioceptive branch with learned latent polynomial
+    interactions while preserving the surrounding policy and action interface.
+  </em>
+</p>
+
 > **Motivation.** Robot policies observe individual state coordinates, while
 > physical behavior depends on how joint, velocity, command, contact, and load
 > effects interact. PRISM makes these couplings learnable from deployable
