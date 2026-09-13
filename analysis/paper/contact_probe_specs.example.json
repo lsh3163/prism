@@ -1,0 +1,10 @@
+[
+  {
+    "name": "LIBERO-Spatial task 1",
+    "suite": "libero_spatial",
+    "task_id": 1,
+    "base_policy": "/path/to/baseline/task_1/checkpoints/020000/pretrained_model",
+    "prism_policy": "/path/to/prism/task_1/checkpoints/020000/pretrained_model",
+    "trace_path": "/path/to/evaluation/libero_spatial_task_1/prism/eval_info.json"
+  }
+]

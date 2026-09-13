@@ -8,9 +8,7 @@ BFM-Zero evaluation patch. The archive must contain the requested feature
 array, which defaults to `history_conditioned`.
 
 ```bash
-pip install -e ".[analysis]"
-
-python analysis/plot_scenario_tsne.py \
+uv run --extra analysis python analysis/plot_scenario_tsne.py \
   --input "BFM-Zero:Nominal=/path/baseline/nominal/actor_representation.npz" \
   --input "BFM-Zero:Low friction=/path/baseline/low_friction/actor_representation.npz" \
   --input "BFM-Zero:Payload mass=/path/baseline/payload/actor_representation.npz" \
@@ -24,3 +22,6 @@ Each method is embedded independently so the plot diagnoses how its own actor
 representation organizes the three dynamics conditions. t-SNE is qualitative;
 the paper reports quantitative neighborhood and classification diagnostics
 separately.
+
+See [the simulation analysis tools](paper/README.md) for contact diagnostics,
+frozen-feature probes, factor ablations, and aggregation across training seeds.

@@ -1,5 +1,17 @@
 # Backbone Integrations
 
+The simulation code includes the original G1 and Diffusion experiments and the
+stronger-backbone patches. Read [../ACTOR_CONTRACT.md](../ACTOR_CONTRACT.md) before
+substituting representations or loading historical checkpoints.
+
+| Integration | Main source and instructions |
+|---|---|
+| Humanoid-Gym-style Unitree G1 | [humanoid-gym/README.md](humanoid-gym/README.md): residual actor, task/environment source, PPO warmup, train/eval and probes; separate legacy environment |
+| LeRobot Diffusion and SmolVLA | [lerobot/README.md](lerobot/README.md): pinned extraction, task recipes, historical checkpoints, simulation metrics and robustness |
+| BFM-Zero | Existing patches and evaluator below; representation analysis in [../analysis/README.md](../analysis/README.md) |
+| Paper analysis | [../analysis/paper/README.md](../analysis/paper/README.md): contact probes, factor ablation, and metric aggregation |
+| New real robot demonstration | [../REAL_DEMO.md](../REAL_DEMO.md): record, train, and deploy the same representation |
+
 The patches in this directory reproduce the exact source-level integration
 used in the stronger-backbone experiments. Apply each patch only to its pinned
 upstream commit.

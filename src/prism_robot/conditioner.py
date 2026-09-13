@@ -103,11 +103,10 @@ class PRISMConditioner(nn.Module):
             raise ValueError(f"degree must be at least 1, got {degree}")
         if interaction_mode not in {"gated", "factorized"}:
             raise ValueError(
-                f"Unsupported interaction_mode={interaction_mode!r}; "
-                "choose 'gated' or 'factorized'"
+                f"Unsupported interaction_mode={interaction_mode!r}; choose 'gated' or 'factorized'"
             )
 
-        hidden_dim = hidden_dim or output_dim
+        hidden_dim = output_dim if hidden_dim is None else hidden_dim
         if hidden_dim < 1:
             raise ValueError(f"hidden_dim must be positive, got {hidden_dim}")
 
@@ -117,16 +116,12 @@ class PRISMConditioner(nn.Module):
         self.degree = degree
         self.interaction_mode = interaction_mode
 
-        self.factors = nn.ModuleList(
-            nn.Linear(input_dim, hidden_dim) for _ in range(degree)
-        )
+        self.factors = nn.ModuleList(nn.Linear(input_dim, hidden_dim) for _ in range(degree))
         for factor in self.factors[1:]:
             nn.init.zeros_(factor.bias)
 
         if interaction_mode == "gated" and degree > 1:
-            self.interaction_scales = nn.Parameter(
-                torch.full((degree - 1, hidden_dim), float(gate_init))
-            )
+            self.interaction_scales = nn.Parameter(torch.full((degree - 1, hidden_dim), float(gate_init)))
         else:
             self.register_parameter("interaction_scales", None)
 
@@ -137,16 +132,12 @@ class PRISMConditioner(nn.Module):
             post_mlp_layers,
             activation,
         )
-        self.output_norm = (
-            RMSNorm(output_dim, eps=rmsnorm_eps) if use_rmsnorm else nn.Identity()
-        )
+        self.output_norm = RMSNorm(output_dim, eps=rmsnorm_eps) if use_rmsnorm else nn.Identity()
 
     def polynomial_features(self, x: Tensor) -> Tensor:
         """Return the latent polynomial features before downstream projection."""
         if x.shape[-1] != self.input_dim:
-            raise ValueError(
-                f"Expected final input dimension {self.input_dim}, got {x.shape[-1]}"
-            )
+            raise ValueError(f"Expected final input dimension {self.input_dim}, got {x.shape[-1]}")
 
         features = self.factors[0](x)
         for index, factor_layer in enumerate(self.factors[1:]):

@@ -1,0 +1,15 @@
+include *.md Makefile
+include .github/workflows/*.yml
+recursive-include src *.py
+recursive-include tests *.py
+recursive-include configs *.json *.env
+recursive-include integrations *.py *.patch *.json *.md LICENSE.*
+recursive-include analysis *.py *.json *.md
+recursive-include validation *.py *.json *.md
+recursive-include assets *.png
+global-exclude __pycache__ *.py[cod]
+prune outputs
+prune checkpoints
+prune datasets
+prune results
+prune wandb

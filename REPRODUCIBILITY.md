@@ -1,56 +1,22 @@
-# Reproducibility
+# Training and evaluation recipes
 
-## Common Controls
+Start with the [integration setup](integrations/README.md) for pinned source
+revisions and dependencies. G1 and main Diffusion commands live in their
+[Humanoid-Gym](integrations/humanoid-gym/README.md) and
+[LeRobot](integrations/lerobot/README.md) guides. The complete simulation workflow
+index is [EXPERIMENTS.md](EXPERIMENTS.md).
 
-- Random seed: `1000`
-- PRISM degree: `2`
-- Interaction mode: gated
-- Interaction-scale initialization: `1e-2`
-- Output normalization: RMSNorm
-- No force, wrench, tactile, contact-label, or privileged physical inputs are
-  added to the deployed policy.
+Record resolved configurations, source revisions, dataset versions, training and
+evaluation seeds, checkpoint identity, and raw metrics for every run. Use the
+[checkpoint inventory](validation/README.md) to inspect saved evidence. The
+stronger-backbone recipes below default to seed 1000; repeating evaluations
+does not create independent training seeds.
 
 ## BFM-Zero
 
-Upstream:
-
-- repository: <https://github.com/LeCAR-Lab/BFM-Zero>
-- commit: `b87916f52d3d9e6eeba484f5e80851a235191837`
-
-Paper-aligned training:
-
-- accelerator: one NVIDIA A40
-- parallel environments: `512`
-- environment steps: `9,600,000`
-- agent updates per collection: `16`
-- replay-buffer size: `2,560,000`
-- checkpoint interval: `4,800,000` environment steps
-- PRISM input: deployable `history_actor` stream
-- PRISM post-projection layers: `2`
-
-Evaluation uses all `40` LAFAN motions with `128` parallel environments and
-reports tracking EMD from the aligned `9.6M` checkpoint. Scenario settings are:
-
-| Scenario | Dynamics overrides |
-|---|---|
-| Nominal | Disable training-time dynamics randomization |
-| Low friction | Nominal settings plus static and dynamic friction fixed to `0.20` |
-| Payload mass | Nominal settings plus link-mass scale fixed to `1.15` |
-
-The evaluator receives the same motion set, rollout settings, and scenario
-overrides for every method. The released `tracking_eval.py` accepts additional
-Hydra overrides through `--hydra-overrides-json`.
-
-Capacity controls change only these environment variables:
-
-| Method | Overrides relative to the shared recipe |
-|---|---|
-| BFM-Zero | `BFM_HISTORY_CONDITIONER_TYPE=linear` |
-| Larger BFM-Zero | Baseline plus `BFM_CORE_HIDDEN_DIM=2560` and `BFM_CORE_HIDDEN_LAYERS=6` |
-| PRISM | Values in `configs/bfm_zero_prism.env` |
-
-Load `configs/bfm_zero_prism.env` before invoking the patched BFM-Zero
-training entry point:
+Apply the BFM training and evaluation patches at upstream commit
+`b87916f52d3d9e6eeba484f5e80851a235191837`. Install Isaac Sim and the LAFAN motion
+data following upstream instructions. From that prepared environment:
 
 ```bash
 set -a
@@ -59,78 +25,67 @@ set +a
 uv run python -m humanoidverse.train
 ```
 
-Dataset and simulator installation follow the upstream BFM-Zero instructions.
+The recipe uses 512 parallel environments, 9.6M environment steps, 16 updates
+per collection, a 2.56M replay buffer, and 4.8M checkpoint intervals. PRISM
+transforms `history_actor` with a degree-2 gated product, gate initialization
+0.01, a two-layer projection with Mish, and RMSNorm. The recorded training accelerator
+was one NVIDIA A40.
+
+| Method | Overrides after loading the shared recipe |
+|---|---|
+| Baseline | `BFM_HISTORY_CONDITIONER_TYPE=linear` |
+| Larger baseline | Baseline plus `BFM_CORE_HIDDEN_DIM=2560`, `BFM_CORE_HIDDEN_LAYERS=6` |
+| PRISM | Values in [bfm_zero_prism.env](configs/bfm_zero_prism.env) |
+
+Evaluate the 9.6M checkpoint on all 40 LAFAN motions with 128 environments:
+
+```bash
+uv run python /path/to/prism/integrations/bfm-zero/evaluate_scenarios.py   --bfm-root=/path/to/patched/BFM-Zero   --model-folder=/path/to/aligned/run   --data-path=/path/to/lafan_29dof.pkl
+```
+
+The launcher previews all three commands; add `--execute` to run them.
+
+| Scenario | Dynamics |
+|---|---|
+| Nominal | Training dynamics randomization disabled individually. |
+| Low friction | Nominal settings plus static/dynamic friction fixed at 0.20. |
+| Payload mass | Nominal settings plus link masses scaled by 1.15. |
+
+Keep observation-noise settings identical across methods. Saved settings are
+retained unless `--disable-obs-noise` is selected. Do not use the upstream blanket
+`disable_dr=true` with friction/mass events: it disables those overrides after
+Hydra composition. Inspect the effective configuration and preserve
+`scenario_metadata.json`; scenario names alone do not establish applied dynamics.
 
 ## SmolVLA
 
-Upstream:
+Use the combined LeRobot integration at `d656da8ccca5989ff0a2207e81fbfa2c2d5bafb1`,
+or the original standalone patch at `2d7a42011a4f8e05a8c85d5fb908da258d4cc7b1`.
+The [LeRobot guide](integrations/lerobot/README.md) documents installation and
+source routing. The launcher below targets the combined integration.
 
-- repository: <https://github.com/huggingface/lerobot>
-- commit: `2d7a42011a4f8e05a8c85d5fb908da258d4cc7b1`
-- pretrained initialization: `lerobot/smolvla_base`
-- dataset: `HuggingFaceVLA/libero`
+```bash
+uv run python /path/to/prism/integrations/lerobot/scripts/smolvla.py train   --lerobot-root=/path/to/patched/lerobot --profile=prism --seed=1000   --output=outputs/smolvla_prism
 
-Paper-aligned training:
+uv run python /path/to/prism/integrations/lerobot/scripts/smolvla.py eval   --lerobot-root=/path/to/patched/lerobot --profile=prism --seed=1000   --checkpoint=/path/to/checkpoints/080000/pretrained_model   --output=eval_logs/smolvla_prism
+```
 
-- accelerator: one NVIDIA A40
-- batch size: `64`
-- training horizon: `100,000` steps
-- reported checkpoint: `80,000`
-- workers: `8`
-- scheduler warmup: `100` steps
-- vision encoder: frozen
-- action expert: trainable
-- proprioceptive state projection: trainable
-- VLM weights: initialized from pretrained SmolVLA
-- suites: Spatial, Object, Goal, and Long (`libero_10`)
+Commands preview by default; add `--execute` to run them. Training uses
+`HuggingFaceVLA/libero`, batch 64, eight workers, AdamW learning rate 1e-4,
+100 scheduler warmup steps, and 100K updates. The pinned configuration loads
+pretrained VLM weights, freezes the vision-language backbone, and trains the
+action expert and state conditioner. The recorded accelerator was one A40.
 
-Official `eval50` uses `500` episodes per suite (`2,000` total).
+Evaluate the 80K checkpoint with 50 episodes per task: 500 per suite and
+2,000 total across Spatial, Object, Goal, and Long. Use these profiles:
 
-Capacity controls change only the proprioceptive conditioner:
-
-| Method | Conditioner settings |
+| Profile | State conditioner |
 |---|---|
-| SmolVLA | `state_conditioner_type=linear` |
-| Larger SmolVLA | `state_conditioner_type=mlp`, hidden width `2048`, `3` layers |
-| PRISM | `state_conditioner_type=prism`, degree `2`, gate init `1e-2`, RMSNorm |
+| `baseline` | Linear projection. |
+| `larger` | Three-layer MLP, width 2048. |
+| `prism` | Gated quadratic product, gate init 0.01, two-layer projection with SiLU. |
 
-After applying the LeRobot patch, the core arguments are:
-
-```bash
-lerobot-train \
-  --policy.type=smolvla \
-  --policy.load_vlm_weights=true \
-  --policy.freeze_vision_encoder=true \
-  --policy.train_expert_only=true \
-  --policy.state_conditioner_type=prism \
-  --policy.state_conditioner_num_layers=2 \
-  --policy.state_conditioner_product_mode=gated_quadratic \
-  --policy.state_conditioner_gate_scale_init=1e-2 \
-  --policy.state_conditioner_use_rmsnorm=true \
-  --policy.scheduler_warmup_steps=100 \
-  --policy.scheduler_decay_steps=100000 \
-  --dataset.repo_id=HuggingFaceVLA/libero \
-  --env.type=libero \
-  --env.task=libero_spatial,libero_object,libero_goal,libero_10 \
-  --batch_size=64 \
-  --num_workers=8 \
-  --seed=1000 \
-  --steps=100000 \
-  --policy.device=cuda \
-  --output_dir=/path/to/smolvla-prism
-```
-
-Evaluate the aligned checkpoint with:
-
-```bash
-lerobot-eval \
-  --policy.path=/path/to/smolvla-prism/checkpoints/080000/pretrained_model \
-  --env.type=libero \
-  --env.task=libero_spatial,libero_object,libero_goal,libero_10 \
-  --eval.n_episodes=50 \
-  --eval.batch_size=1 \
-  --env.max_parallel_tasks=1 \
-  --policy.device=cuda \
-  --seed=1000 \
-  --output_dir=/path/to/smolvla-prism-eval50
-```
+The current launcher applies output RMSNorm to all profiles. Historical
+baseline/larger saved configurations were not recovered to verify their
+normalization; these commands alone do not certify reproduction of the
+[archived results](RESULTS.md). Larger models are capacity controls.

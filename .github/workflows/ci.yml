@@ -1,0 +1,44 @@
+name: Code quality and CPU tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python: "3.10"
+            torch: "2.1.2"
+          - python: "3.12"
+            torch: "2.6.0"
+    steps:
+      # Pinned actions follow https://docs.astral.sh/uv/guides/integration/github/.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.11.7"
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+      - name: Install CPU dependencies
+        run: |
+          uv venv
+          uv pip install -e '.[test,dev]' 'torch==${{ matrix.torch }}' 'numpy==1.26.4' --torch-backend=cpu
+      - name: Lint and test
+        run: make check UV_RUN='uv run --no-sync'
+      - name: Build source distribution and wheel
+        run: make build
+      - name: Validate distribution contents
+        run: uv run --no-sync python validation/check_distribution.py dist

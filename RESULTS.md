@@ -1,6 +1,11 @@
-# Stronger-Backbone Results
+# Archived stronger-backbone results
 
-These are the aligned results used for the current paper update.
+These measurements are retained from the initial GitHub release. They were
+not regenerated during source preparation. Their recorded protocols are below;
+complete checkpoint and independent-training-seed provenance is not bundled.
+Use [REPRODUCIBILITY.md](REPRODUCIBILITY.md) for recipes and
+[validation/SMOKE_REPORT.md](validation/SMOKE_REPORT.md) for completed execution
+checks. Those bounded checks do not validate these benchmark averages.
 
 ## BFM-Zero Locomotion
 

@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "upstream_repository": "https://github.com/huggingface/lerobot",
+  "upstream_commit": "d656da8ccca5989ff0a2207e81fbfa2c2d5bafb1",
+  "patch": "diffusion_libero.patch",
+  "copied_modules": [
+    {
+      "source": "diffusion_conditioner.py",
+      "target": "src/lerobot/policies/diffusion/prism_conditioner.py",
+      "sha256": "d8c1ed15c0a814d3b0a1477bc663bf6cc6e6dc602ff9d988e2a93e59b16a7fa9"
+    },
+    {
+      "source": "libero_episode.py",
+      "target": "src/lerobot/envs/prism_episode.py",
+      "sha256": "9e8ed490c16f226340b30acfea3fe9c111fa740c454af9338a0175764e356f20"
+    }
+  ],
+  "files": [
+    {
+      "upstream_path": "src/lerobot/policies/diffusion/configuration_diffusion.py",
+      "upstream_sha256": "d97319978bd9d1d66d8932318612e4c77455fdddaa53e462e8f7786aedaf3c4d",
+      "release_sha256": "b55b6d897e8f304b1ef2a7d8e9a301569c8863d370afa47cedcb4ffc0c6cd6f4",
+      "workspace_source_sha256": "609edfc54a73f964907abb57c18e6d2421481487adeb5e29e306a82d06d88938"
+    },
+    {
+      "upstream_path": "src/lerobot/policies/diffusion/modeling_diffusion.py",
+      "upstream_sha256": "be60a7611f22cc100b492317b110e965b96f5ed6a91afc8e38cbca9fa00f853d",
+      "release_sha256": "4f5ef0a8cf6403fcfbd6c3aad8d3327e1619a8afdb47cc6fd0e42fede5f45890",
+      "workspace_source_sha256": "da31f1c8d89ca66933f7921386de27b84d4e3b55f11be94f0718f9482e97bfd3"
+    },
+    {
+      "upstream_path": "src/lerobot/envs/configs.py",
+      "upstream_sha256": "ce8caba483921009cb86b078c2c064b740eefcbbba575493b57e8eab8260b0fb",
+      "release_sha256": "337c4161af526717a2f811b31176538ae41f6fea20e38d2e6a49df9e99269231",
+      "workspace_source_sha256": "58eb1eec021ad2282d85b32e34c722625bd740168e506b0214ced4006203759f"
+    },
+    {
+      "upstream_path": "src/lerobot/envs/libero.py",
+      "upstream_sha256": "68c24e9a3bda42d660297ab36ac75eb91183764cba48975ef31c0191ec85d134",
+      "release_sha256": "4b00abbafba98e2dfbbaebe4f85a4b2e33d2b4b5d7679ab08cdcbdbbcb260f29",
+      "workspace_source_sha256": "500bdacb1845c3104b2cc222a5d705ea37dadc61366dd1f661e947fae7e85539"
+    },
+    {
+      "upstream_path": "src/lerobot/scripts/lerobot_eval.py",
+      "upstream_sha256": "095b8c55fbad24a1146d39d6163722df6bd16b88a209ffa564afd02cd669b8ee",
+      "release_sha256": "5029acaf145ef6a8268125afa6aa73290ca135b82b519a211eb86854176c9489",
+      "workspace_source_sha256": "5029acaf145ef6a8268125afa6aa73290ca135b82b519a211eb86854176c9489"
+    },
+    {
+      "upstream_path": "src/lerobot/configs/default.py",
+      "upstream_sha256": "a6a080bab8535f337e0a142d23cc172e6508555543be18c8605390cd7a0565df",
+      "release_sha256": "a75f21234b79c402f960181b5733c6155a9c4d13ba6947a8f2d12b838bde5ee1",
+      "workspace_source_sha256": "a75f21234b79c402f960181b5733c6155a9c4d13ba6947a8f2d12b838bde5ee1"
+    },
+    {
+      "upstream_path": "src/lerobot/scripts/lerobot_train.py",
+      "upstream_sha256": "df1c58e8403cc6cb6cecaab8fd56ce4aef5e95804ea62c48d2d8f199dc762afb",
+      "release_sha256": "2a68040e57fafda599cd7bc432ea9f7f314b127c1e4bc3080e31e170a7161542",
+      "workspace_source_sha256": "88c530fcf6cf62822ca3ba23b05f2f00f90fcc43611e6df8717d75f067438c01"
+    }
+  ],
+  "actor_variant": "diffusion_factorized_state_v1",
+  "historical_source_note": "Extracted from the local simulation implementation over the pinned upstream commit; historical training commits were not recorded. Source hashes identify the reviewed extraction, not the source revision of past runs.",
+  "exclusions": [
+    "hardware code and results",
+    "action-residual execution",
+    "unrelated hub config registration",
+    "real-robot chunk blending",
+    "new canonical PRISM actor variants"
+  ],
+  "smolvla": {
+    "patch": "../lerobot-smolvla.patch",
+    "original_upstream_commit": "2d7a42011a4f8e05a8c85d5fb908da258d4cc7b1",
+    "also_applies_to": "d656da8ccca5989ff0a2207e81fbfa2c2d5bafb1",
+    "sha256": "7f98e58942270c2b5d17233b1d910e5409d373251e0a068a4d5218c20a787146",
+    "actor_variant": "smolvla_gated_quadratic_v1",
+    "checkpoint_note": "Preserves left_proj/right_proj/quadratic_scale and external state_output_norm. No migration to standalone core keys.",
+    "files": [
+      {
+        "upstream_path": "src/lerobot/policies/smolvla/configuration_smolvla.py",
+        "upstream_sha256": "2fb637cb428fa2fdf1d114646dcffaf4728216bfe5b7039d5d0cac4857ffc4e0",
+        "release_sha256": "5f29a4e702146eec3df793ff4ff2f6ee2ee7016a4668529e3f54e801f5e02952"
+      },
+      {
+        "upstream_path": "src/lerobot/policies/smolvla/modeling_smolvla.py",
+        "upstream_sha256": "5daaa297954acf9ae89397b571322f07bf30798e72f566e61a09393342cb1f99",
+        "release_sha256": "7f12d5c155a65f1775cdeae2cf5ee6ed657f4e70fc372938f9efb2e6b9fd5a6f"
+      }
+    ]
+  },
+  "recipe_sources": [
+    {
+      "path": "scripts/paper/run_diffusion_libero_poly_kernel_per_task.sh",
+      "sha256": "03caf1f41a5974ca5f8e56365192aac2dc941a580ca7a7bf4585b8e8c6fb456f"
+    },
+    {
+      "path": "scripts/paper/train_diffusion_libero_polycompliance.sh",
+      "sha256": "0cb6eb11a6e0129e5c2b010259f42e8f6abeeb232cd74df6e5f9bb637799109d"
+    },
+    {
+      "path": "scripts/paper/eval_diffusion_libero_claim_a.sh",
+      "sha256": "a4f1be70e0690993a228175fb7f5d7dc145ecb921ee5c4b7446ca2ffac262cab"
+    },
+    {
+      "path": "scripts/paper/run_mcc_validation_sweep.sh",
+      "sha256": "8f00c3c9163238e5bd69ad087c8f580d35505821c5cfea1f22161d8c54332aec"
+    },
+    {
+      "path": "scripts/paper/run_robustness_perturb_eval.sh",
+      "sha256": "f914c02048f3fd8e3fad5868ad85aa417733a2baa522156be6d273380083b197"
+    },
+    {
+      "path": "scripts/paper/libero_task_episodes.py",
+      "sha256": "b309a5ff14d8841a5b7b52323e3e4f77d5f3a10145a4f7a49c2e351c498db240"
+    }
+  ],
+  "runtime_notes": [
+    "Historical main Diffusion training used seed0; eval scripts left EvalPipelineConfig.seed at1000.",
+    "Historical baseline configs use batch8/workers4; PRISM uses batch64/workers8. matched-baseline is a new rerun control.",
+    "Current reviewed training source enables bf16 when use_amp=true and drops incomplete batches. Historical configs alone do not establish the exact training-code revision.",
+    "LIBERO evaluation diagnostics/noise/delay and MCC code are preserved from the reviewed workspace. No new dynamics perturbations are claimed."
+  ],
+  "post_extraction_fixes": [
+    {
+      "date": "2026-09-13",
+      "component": "LIBERO episode termination",
+      "change": "Honor terminate_on_success=false when LIBERO returns done=true on task success; preserve non-success backend termination.",
+      "evidence": "Installed LIBERO bddl_base_domain.step replaces done with _check_success(). Real task0 validation ended at first success106steps despite the requested continuation.",
+      "compatibility": "Actor and checkpoints unchanged. Full-horizon diagnostics differ from historical early-stop evaluation; original-semantics smoke artifacts are retained separately."
+    }
+  ],
+  "patch_sha256": "789a7b00a5e9417262aab6f5742d0ba4b9138c2052ea892265de5154c5b10138"
+}

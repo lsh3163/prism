@@ -12,7 +12,6 @@ import numpy as np
 from sklearn.manifold import TSNE
 from sklearn.preprocessing import StandardScaler
 
-
 SCENARIO_STYLE = {
     "Nominal": ("#4f7a45", "o"),
     "Low friction": ("#3478c7", "^"),
@@ -83,7 +82,7 @@ def main() -> None:
         squeeze=False,
         constrained_layout=True,
     )
-    for axis, (method, scenario_groups) in zip(axes[0], grouped.items()):
+    for axis, (method, scenario_groups) in zip(axes[0], grouped.items(), strict=False):
         feature_blocks = [features for _, features in scenario_groups]
         labels = np.concatenate(
             [np.full(len(features), scenario, dtype=object) for scenario, features in scenario_groups]

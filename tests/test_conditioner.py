@@ -88,6 +88,8 @@ class PRISMConditionerTest(unittest.TestCase):
             PRISMConditioner(4, 8, degree=0)
         with self.assertRaises(ValueError):
             PRISMConditioner(4, 8, interaction_mode="unknown")
+        with self.assertRaisesRegex(ValueError, "hidden_dim must be positive"):
+            PRISMConditioner(4, 8, hidden_dim=0)
 
 
 if __name__ == "__main__":

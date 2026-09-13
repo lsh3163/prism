@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "decision": "Preserve existing computations and checkpoint schemas under stable actor variant IDs.",
+  "scope": "Computation graphs, observation interfaces, and checkpoint compatibility for supported policy integrations.",
+  "contracts": {
+    "g1_residual_poly_v1": {
+      "source": "integrations/humanoid-gym/actor.py",
+      "class": "PolyActorCritic",
+      "representation_class": "ResidualPolyEncoder",
+      "input_dim": 705,
+      "actor_input_components": "15 frames of gait phase, velocity commands, joint positions/velocities, previous actions, and inertial measurements; preserve the exact source order and scaling.",
+      "critic_input_dim": 219,
+      "output_dim": 12,
+      "representation_dim": 256,
+      "actor_hidden_dims": [
+        512,
+        256,
+        128
+      ],
+      "critic_hidden_dims": [
+        768,
+        256,
+        128
+      ],
+      "activation": "elu",
+      "actor_input_layer_norm": false,
+      "actor_output_layer_norm": false,
+      "critic_uses_polynomial": false,
+      "main_variant": {
+        "degree": 2,
+        "warmup_ppo_updates": 500
+      },
+      "main_actor_mean_parameters": 921996,
+      "main_total_actor_critic_parameters": 1320857,
+      "parameter_count_note": "Actor mean includes the encoder and actor MLP. Total also includes critic and Gaussian standard-deviation parameters; buffers are excluded.",
+      "fixed_degree_ablation": {
+        "degrees": [
+          1,
+          2,
+          3
+        ],
+        "warmup_ppo_updates": 0
+      },
+      "gate_semantics": "Scalar buffer min(completed PPO updates / warmup updates, 1); fixed variants use 1.",
+      "checkpoint_keys": [
+        "actor_encoder.raw_proj.weight",
+        "actor_encoder.poly_in_proj.weight",
+        "actor_encoder.A.0.weight",
+        "actor_encoder.S.0.weight",
+        "actor_encoder.poly_scale",
+        "actor_poly_warmup_step"
+      ],
+      "compatibility_note": "Main comparison and fixed degree-2 ablation use different warmup settings."
+    },
+    "diffusion_factorized_state_v1": {
+      "source": "integrations/lerobot/diffusion_conditioner.py",
+      "class": "PolynomialKernelConditioner",
+      "input_dim": 16,
+      "output_dim": 16,
+      "observation_steps": 2,
+      "state_dim_per_step": 8,
+      "action_dim": 7,
+      "degree": 2,
+      "latent_dim": 256,
+      "hidden_dim": 256,
+      "activation": "silu",
+      "lift_mode": "latent_quadratic",
+      "input_layer_norm": true,
+      "latent_layer_norm": true,
+      "gate_semantics": "No gate or scheduled scale; multiply two affine factors directly.",
+      "normalization_before_module": "Use the saved policy preprocessor; inspected main task0 configs specify MIN_MAX for state.",
+      "history_order": "Flatten state history, combined image-feature history, and optional environment-state history separately, then concatenate in that order. Camera features are concatenated within each timestep before image-history flattening.",
+      "checkpoint_prefix": "diffusion.poly_kernel_conditioner.",
+      "checkpoint_keys": [
+        "input_norm.weight",
+        "left_proj.weight",
+        "right_proj.weight",
+        "net.0.weight",
+        "net.1.weight",
+        "net.3.weight"
+      ]
+    },
+    "smolvla_gated_quadratic_v1": {
+      "source": "integrations/lerobot-smolvla.patch",
+      "class": "PRISMStateConditioner",
+      "input_dim_from_config": "max_state_dim",
+      "output_dim_from_backbone": "vlm_with_expert.config.text_config.hidden_size",
+      "degree": 2,
+      "post_mlp_layers": 2,
+      "activation": "silu",
+      "output_norm": "RMSNorm outside state_proj; preserve historical dtype arithmetic",
+      "gate_semantics": "Learned per-latent-feature quadratic_scale, initialized to 0.01; right affine bias initialized to zero.",
+      "checkpoint_keys": [
+        "model.state_proj.left_proj.weight",
+        "model.state_proj.right_proj.weight",
+        "model.state_proj.quadratic_scale",
+        "model.state_output_norm.weight"
+      ],
+      "compatibility_note": "Historical baseline/larger normalization and multi-seed checkpoint identity remain unverified."
+    },
+    "bfm_history_gated_quadratic_v1": {
+      "source": "integrations/bfm-zero.patch",
+      "class": "HistoryActorPRISMConcatFilter",
+      "input_stream": "history_actor after model observation normalization",
+      "input_dim_from_backbone": "history_actor observation space",
+      "output_dim_from_config": "output_dim or unchanged history dimension",
+      "degree": 2,
+      "post_mlp_layers": 2,
+      "activation": "mish",
+      "output_norm": "RMSNorm inside history filter; preserve historical dtype arithmetic",
+      "gate_semantics": "Learned per-latent-feature quadratic_scale, initialized to 0.01; right affine bias initialized to zero.",
+      "checkpoint_keys": [
+        "left_proj.weight",
+        "right_proj.weight",
+        "quadratic_scale",
+        "output_norm.weight"
+      ],
+      "compatibility_note": "Distinct from the older development PrismActor over all concatenated observations."
+    },
+    "core_gated_v1": {
+      "source": "src/prism_robot/conditioner.py",
+      "class": "PRISMConditioner",
+      "interaction_mode": "gated",
+      "degree": "configured positive integer",
+      "checkpoint_keys": [
+        "factors.0.weight",
+        "interaction_scales",
+        "post_mlp",
+        "output_norm"
+      ],
+      "compatibility_note": "Reusable API, not a historical checkpoint loader. Float32 degree-2 parity with stronger-backbone branches requires explicit weight mapping and matched activation/norm."
+    },
+    "core_factorized_v1": {
+      "source": "src/prism_robot/conditioner.py",
+      "class": "PRISMConditioner",
+      "interaction_mode": "factorized",
+      "degree": "configured positive integer",
+      "checkpoint_keys": [
+        "factors.0.weight",
+        "post_mlp",
+        "output_norm"
+      ],
+      "compatibility_note": "Reusable API; no claim that its normalization/projection or checkpoint layout matches the main Diffusion adapter."
+    }
+  }
+}

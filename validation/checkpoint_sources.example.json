@@ -1,0 +1,37 @@
+{
+  "description": "Example only: adapt relative selectors to your simulation run directory. No runs or reported results are implied.",
+  "sources": [
+    {
+      "id": "g1_checkpoints",
+      "kind": "g1",
+      "root": "runs",
+      "glob": "g1/*/model_*.pt"
+    },
+    {
+      "id": "lerobot_checkpoints",
+      "kind": "lerobot",
+      "root": "runs",
+      "glob": "lerobot/*/checkpoints/*/pretrained_model/train_config.json"
+    },
+    {
+      "id": "bfm_configs",
+      "kind": "bfm",
+      "root": "runs",
+      "glob": "bfm/*/config.json"
+    }
+  ],
+  "evaluation_sources": [
+    {
+      "id": "g1_evaluations",
+      "kind": "g1",
+      "root": "runs",
+      "glob": "g1/*/evaluation.json"
+    },
+    {
+      "id": "lerobot_evaluations",
+      "kind": "lerobot",
+      "root": "runs",
+      "glob": "lerobot/*/eval_info.json"
+    }
+  ]
+}

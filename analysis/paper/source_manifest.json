@@ -1,0 +1,67 @@
+{
+  "scope": "Simulation analysis only. Historical probe numerics remain available exclusively in explicit historical-surrogate-audit mode; corrected state-first-contribution is a new analysis protocol.",
+  "sources": [
+    {
+      "source": "scripts/paper/make_contact_response_probe_table.py",
+      "source_sha256": "45f9ab2ea9b750667033dbc62f7d10c6eaf209aa93e10d2f6c16c7223a3e7c36",
+      "destination": "make_contact_response_probe_table.py",
+      "changes": [
+        "Requires explicit feature mode: historical-surrogate-audit preserves old tail-column/SiLU/mean-std features; state-first-contribution validates saved dimensions and uses the correct state columns, Mish-before-linear, and saved state normalization.",
+        "Corrected baseline output is state-dependent FiLM contribution plus bias, not full U-Net activation; source historical tables require rerunning.",
+        "Explicit checkpoint/trace JSON specification replaces private paths and last-checkpoint fallback; mode and source interpretation recorded in JSON and TeX.",
+        "Window/target/fitting computation preserved; output paths created and code formatted."
+      ]
+    },
+    {
+      "source": "scripts/paper/aggregate_compliance_mechanism.py",
+      "source_sha256": "efc738cd24f78b2daaa09cdaaf5210cc246e4a146b5d16fc179587bbc0b52f81",
+      "destination": "aggregate_compliance_mechanism.py",
+      "changes": [
+        "Create separate output parent directories.",
+        "Import sorting and formatting only; numerical computation unchanged."
+      ]
+    },
+    {
+      "source": "scripts/paper/summarize_robustness.py",
+      "source_sha256": "1cfadf8c1232da69159d16d108bc8f58621a156203a585582b48579ba9f6bebc",
+      "destination": "summarize_robustness.py",
+      "changes": [
+        "Create separate output parent directories.",
+        "Import sorting and formatting only; numerical computation unchanged."
+      ]
+    },
+    {
+      "source": "scripts/paper/summarize_mcc_sweep.py",
+      "source_sha256": "4a9cb68122437d2b61d2662643db5740be2a23018b1b123a71c28d94c647ed9c",
+      "destination": "summarize_mcc_sweep.py",
+      "changes": [
+        "Create separate output parent directories.",
+        "Import sorting and formatting only; numerical computation unchanged."
+      ]
+    }
+  ],
+  "new_scripts": {
+    "ablate_locomotion_factors.py": {
+      "derived_from": [
+        "scripts/paper/compute_prism_policy_deviation_terms.py",
+        "scripts/paper/make_prism_learned_terms_table.py"
+      ],
+      "changes": [
+        "Uses canonical integrations/humanoid-gym/actor.py with strict checkpoint loading instead of reconstructing the actor math.",
+        "Preserves selected-channel multiplication ablation; reports historical L2 metric and separate MAE.",
+        "Reports true branch argmax and historical distinct-coordinate naming separately.",
+        "Requires exact checkpoint and observation files; writes their SHA-256 hashes."
+      ],
+      "source_sha256": {
+        "scripts/paper/compute_prism_policy_deviation_terms.py": "92071eea1aee68585b730fe9d14a9d80d181c4a10e6274ef5f4958bb30bdcd1d",
+        "scripts/paper/make_prism_learned_terms_table.py": "efcbca5267415feac719164bdcf08a2d3fa2d18ee01515bd7b84fcdbd232b2db"
+      }
+    },
+    "plot_contact_response.py": {
+      "purpose": "Configurable contact-force and EEF-speed diagnostic renderer; requires simulation timestep explicitly."
+    },
+    "aggregate_training_seeds.py": {
+      "purpose": "Aggregate explicit per-training-seed scalar metric manifests; reject missing or duplicate replicates. No seed identities or benchmark results supplied."
+    }
+  }
+}

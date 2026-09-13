@@ -1,0 +1,1019 @@
+diff --git a/src/lerobot/policies/diffusion/configuration_diffusion.py b/src/lerobot/policies/diffusion/configuration_diffusion.py
+--- a/src/lerobot/policies/diffusion/configuration_diffusion.py
++++ b/src/lerobot/policies/diffusion/configuration_diffusion.py
+@@ -152,6 +152,36 @@
+     # Loss computation
+     do_mask_loss_for_padding: bool = False
+ 
++    # Historical checkpoint fields; action-residual execution is intentionally unavailable.
++    use_poly_compliance: bool = False
++    poly_compliance_context_dim: int = 64
++    poly_compliance_lift_mode: str = "raw"
++    poly_compliance_latent_dim: int = 64
++    poly_compliance_hidden_dim: int = 128
++    poly_compliance_scale: float = 1.0
++    poly_compliance_loss_weight: float = 0.1
++    poly_compliance_freeze_base: bool = False
++    poly_compliance_residual_l2_weight: float = 0.0
++    poly_compliance_residual_smoothness_weight: float = 0.0
++    poly_compliance_action_smoothness_weight: float = 0.0
++    poly_compliance_action_l2_weight: float = 0.0
++    poly_compliance_action_jerk_weight: float = 0.0
++    poly_compliance_num_train_samples: int = 1
++    poly_compliance_sample_consistency_weight: float = 0.0
++    poly_compliance_uncertainty_action_l2_weight: float = 0.0
++    poly_compliance_uncertainty_jerk_weight: float = 0.0
++    poly_compliance_use_gate: bool = False
++    poly_compliance_gate_l1_weight: float = 0.0
++    poly_compliance_gate_bias_init: float = -2.0
++    poly_compliance_ablate_interaction: str = "none"
++
++    # Main LIBERO representation, with the historical default kept for old configs.
++    use_poly_kernel_conditioning: bool = False
++    poly_kernel_source: str = "global"
++    poly_kernel_lift_mode: str = "latent_quadratic"
++    poly_kernel_latent_dim: int = 256
++    poly_kernel_hidden_dim: int = 256
++
+     # Training presets
+     optimizer_lr: float = 1e-4
+     optimizer_betas: tuple = (0.95, 0.999)
+@@ -162,6 +192,15 @@
+ 
+     def __post_init__(self):
+         super().__post_init__()
++
++        if self.use_poly_compliance:
++            raise ValueError("This release contains representation conditioning; action-residual checkpoints are unsupported.")
++        if self.poly_kernel_source not in {"global", "state"}:
++            raise ValueError(f"Unsupported poly_kernel_source={self.poly_kernel_source!r}")
++        if self.poly_kernel_lift_mode not in {"raw", "latent_quadratic"}:
++            raise ValueError(f"Unsupported historical poly_kernel_lift_mode={self.poly_kernel_lift_mode!r}")
++        if self.poly_kernel_latent_dim < 1 or self.poly_kernel_hidden_dim < 1:
++            raise ValueError("Polynomial kernel dimensions must be positive")
+ 
+         """Input validation (not exhaustive)."""
+         if not self.vision_backbone.startswith("resnet"):
+diff --git a/src/lerobot/policies/diffusion/modeling_diffusion.py b/src/lerobot/policies/diffusion/modeling_diffusion.py
+--- a/src/lerobot/policies/diffusion/modeling_diffusion.py
++++ b/src/lerobot/policies/diffusion/modeling_diffusion.py
+@@ -43,6 +43,7 @@
+     DDPMScheduler = None
+ 
+ from ..pretrained import PreTrainedPolicy
++from .prism_conditioner import PolynomialKernelConditioner
+ from ..utils import (
+     get_device_from_parameters,
+     get_dtype_from_parameters,
+@@ -194,7 +195,24 @@
+         if self.config.env_state_feature:
+             global_cond_dim += self.config.env_state_feature.shape[0]
+ 
+-        self.unet = DiffusionConditionalUnet1d(config, global_cond_dim=global_cond_dim * config.n_obs_steps)
++        flattened_state_cond_dim = self.config.robot_state_feature.shape[0] * config.n_obs_steps
++        flattened_global_cond_dim = global_cond_dim * config.n_obs_steps
++        if config.use_poly_kernel_conditioning:
++            poly_kernel_dim = (
++                flattened_state_cond_dim
++                if config.poly_kernel_source == "state"
++                else flattened_global_cond_dim
++            )
++            self.poly_kernel_conditioner = PolynomialKernelConditioner(
++                input_dim=poly_kernel_dim,
++                output_dim=poly_kernel_dim,
++                lift_mode=config.poly_kernel_lift_mode,
++                latent_dim=config.poly_kernel_latent_dim,
++                hidden_dim=config.poly_kernel_hidden_dim,
++            )
++        else:
++            self.poly_kernel_conditioner = None
++        self.unet = DiffusionConditionalUnet1d(config, global_cond_dim=flattened_global_cond_dim)
+ 
+         if config.compile_model:
+             # Compile the U-Net. "reduce-overhead" is preferred for the small-batch repetitive loops
+@@ -257,7 +275,10 @@
+     def _prepare_global_conditioning(self, batch: dict[str, Tensor]) -> Tensor:
+         """Encode image features and concatenate them all together along with the state vector."""
+         batch_size, n_obs_steps = batch[OBS_STATE].shape[:2]
+-        global_cond_feats = [batch[OBS_STATE]]
++        state_cond = batch[OBS_STATE].flatten(start_dim=1)
++        if self.poly_kernel_conditioner is not None and self.config.poly_kernel_source == "state":
++            state_cond = self.poly_kernel_conditioner(state_cond)
++        global_cond_feats = [state_cond]
+         # Extract image features.
+         if self.config.image_features:
+             if self.config.use_separate_rgb_encoder_per_camera:
+@@ -284,13 +305,16 @@
+                 img_features = einops.rearrange(
+                     img_features, "(b s n) ... -> b s (n ...)", b=batch_size, s=n_obs_steps
+                 )
+-            global_cond_feats.append(img_features)
++            global_cond_feats.append(img_features.flatten(start_dim=1))
+ 
+         if self.config.env_state_feature:
+-            global_cond_feats.append(batch[OBS_ENV_STATE])
+-
+-        # Concatenate features then flatten to (B, global_cond_dim).
+-        return torch.cat(global_cond_feats, dim=-1).flatten(start_dim=1)
++            global_cond_feats.append(batch[OBS_ENV_STATE].flatten(start_dim=1))
++
++        # Concatenate flattened features to (B, global_cond_dim).
++        global_cond = torch.cat(global_cond_feats, dim=-1)
++        if self.poly_kernel_conditioner is not None and self.config.poly_kernel_source == "global":
++            global_cond = self.poly_kernel_conditioner(global_cond)
++        return global_cond
+ 
+     def generate_actions(self, batch: dict[str, Tensor], noise: Tensor | None = None) -> Tensor:
+         """
+diff --git a/src/lerobot/envs/configs.py b/src/lerobot/envs/configs.py
+--- a/src/lerobot/envs/configs.py
++++ b/src/lerobot/envs/configs.py
+@@ -352,6 +352,18 @@
+         }
+     )
+     control_mode: str = "relative"  # or "absolute"
++    terminate_on_success: bool = True
++    controller_kp: float | None = None
++    controller_damping_ratio: float | None = None
++    excess_contact_force_threshold: float | None = None
++    mcc_noisy_enabled: bool = False
++    mcc_force_gain: float = 0.015
++    mcc_noise_std: float = 0.15
++    mcc_delay: int = 2
++    mcc_force_source: str = "sensorless"
++    mcc_force_ema_alpha: float = 0.9
++    mcc_wrench_regularization: float = 1e-4
++    mcc_correction_clip: float | None = None
+ 
+     def __post_init__(self):
+         if self.obs_type == "pixels":
+@@ -434,6 +446,18 @@
+             episode_length=self.episode_length,
+             camera_name_mapping=self.camera_name_mapping,
+             is_libero_plus=self.is_libero_plus,
++            terminate_on_success=self.terminate_on_success,
++            controller_kp=self.controller_kp,
++            controller_damping_ratio=self.controller_damping_ratio,
++            excess_contact_force_threshold=self.excess_contact_force_threshold,
++            mcc_noisy_enabled=self.mcc_noisy_enabled,
++            mcc_force_gain=self.mcc_force_gain,
++            mcc_noise_std=self.mcc_noise_std,
++            mcc_delay=self.mcc_delay,
++            mcc_force_source=self.mcc_force_source,
++            mcc_force_ema_alpha=self.mcc_force_ema_alpha,
++            mcc_wrench_regularization=self.mcc_wrench_regularization,
++            mcc_correction_clip=self.mcc_correction_clip,
+         )
+ 
+     def get_env_processors(self):
+diff --git a/src/lerobot/envs/libero.py b/src/lerobot/envs/libero.py
+--- a/src/lerobot/envs/libero.py
++++ b/src/lerobot/envs/libero.py
+@@ -32,6 +32,7 @@
+ 
+ from lerobot.types import RobotObservation
+ 
++from .prism_episode import should_terminate_episode
+ from .utils import _LazyAsyncVectorEnv, parse_camera_names
+ 
+ 
+@@ -127,6 +128,18 @@
+         num_steps_wait: int = 10,
+         control_mode: str = "relative",
+         is_libero_plus: bool = False,
++        terminate_on_success: bool = True,
++        controller_kp: float | None = None,
++        controller_damping_ratio: float | None = None,
++        excess_contact_force_threshold: float | None = None,
++        mcc_noisy_enabled: bool = False,
++        mcc_force_gain: float = 0.015,
++        mcc_noise_std: float = 0.15,
++        mcc_delay: int = 2,
++        mcc_force_source: str = "sensorless",
++        mcc_force_ema_alpha: float = 0.9,
++        mcc_wrench_regularization: float = 1e-4,
++        mcc_correction_clip: float | None = None,
+     ):
+         super().__init__()
+         self.task_id = task_id
+@@ -153,7 +166,7 @@
+                 "robot0_eye_in_hand_image": "image2",
+             }
+         self.camera_name_mapping = camera_name_mapping
+-        self.num_steps_wait = num_steps_wait
++        self.num_steps_wait = int(os.environ.get("LIBERO_NUM_STEPS_WAIT", num_steps_wait))
+         self.episode_index = episode_index
+         self.episode_length = episode_length
+         # Load once and keep
+@@ -184,6 +197,23 @@
+             else self.episode_length
+         )
+         self.control_mode = control_mode
++        self.terminate_on_success = terminate_on_success
++        self.controller_kp = controller_kp
++        self.controller_damping_ratio = controller_damping_ratio
++        self.excess_contact_force_threshold = excess_contact_force_threshold
++        self.mcc_noisy_enabled = mcc_noisy_enabled
++        self.mcc_force_gain = mcc_force_gain
++        self.mcc_noise_std = mcc_noise_std
++        self.mcc_delay = max(0, int(mcc_delay))
++        self.mcc_force_source = mcc_force_source
++        self.mcc_force_ema_alpha = float(np.clip(mcc_force_ema_alpha, 0.0, 1.0))
++        self.mcc_wrench_regularization = float(max(mcc_wrench_regularization, 0.0))
++        self.mcc_correction_clip = (
++            None if mcc_correction_clip is None else float(max(mcc_correction_clip, 0.0))
++        )
++        self._mcc_force_history: list[np.ndarray] = []
++        self._mcc_filtered_force: np.ndarray | None = None
++        self._mcc_rng = np.random.default_rng(seed=episode_index)
+         images = {}
+         for cam in self.camera_name:
+             images[self.camera_name_mapping[cam]] = spaces.Box(
+@@ -347,9 +377,145 @@
+                 robot.controller.use_delta = True
+         else:
+             raise ValueError(f"Invalid control mode: {self.control_mode}")
++        self._apply_controller_gains()
++        self._mcc_force_history.clear()
++        self._mcc_filtered_force = None
+         observation = self._format_raw_obs(raw_obs)
+         info = {"is_success": False}
+         return observation, info
++
++    def _apply_controller_gains(self) -> None:
++        if self.controller_kp is None and self.controller_damping_ratio is None:
++            return
++        assert self._env is not None
++        for robot in self._env.robots:
++            controller = robot.controller
++            if self.controller_kp is not None and hasattr(controller, "kp"):
++                controller.kp = np.ones_like(controller.kp) * float(self.controller_kp)
++            if self.controller_damping_ratio is not None and hasattr(controller, "kp"):
++                controller.kd = 2 * np.sqrt(controller.kp) * float(self.controller_damping_ratio)
++
++    def _mcc_diagnostic_info(self) -> dict[str, float | bool]:
++        assert self._env is not None
++        controller = self._env.robots[0].controller
++
++        eef_pos_error = float("nan")
++        if hasattr(controller, "ee_pos") and hasattr(controller, "goal_pos"):
++            eef_pos_error = float(np.linalg.norm(controller.ee_pos - controller.goal_pos))
++
++        eef_ori_error = float("nan")
++        if hasattr(controller, "ee_ori_mat") and hasattr(controller, "goal_ori"):
++            rot_delta = controller.goal_ori.T @ controller.ee_ori_mat
++            cosine = np.clip((np.trace(rot_delta) - 1.0) / 2.0, -1.0, 1.0)
++            eef_ori_error = float(np.arccos(cosine))
++
++        contact_force_proxy = float("nan")
++        if hasattr(self._env.sim.data, "cfrc_ext"):
++            cfrc_ext = np.asarray(self._env.sim.data.cfrc_ext)
++            if cfrc_ext.ndim == 2 and cfrc_ext.shape[1] >= 6:
++                contact_force_proxy = float(np.linalg.norm(cfrc_ext[:, 3:6], axis=1).max(initial=0.0))
++            elif cfrc_ext.size > 0:
++                contact_force_proxy = float(np.linalg.norm(cfrc_ext))
++
++        excess_contact = False
++        if self.excess_contact_force_threshold is not None and not np.isnan(contact_force_proxy):
++            excess_contact = contact_force_proxy > float(self.excess_contact_force_threshold)
++
++        return {
++            "eef_pos_error": eef_pos_error,
++            "eef_ori_error": eef_ori_error,
++            "contact_force_proxy": contact_force_proxy,
++            "excess_contact": excess_contact,
++        }
++
++    def _contact_force_vector(self) -> np.ndarray:
++        assert self._env is not None
++        if not hasattr(self._env.sim.data, "cfrc_ext"):
++            return np.zeros(3, dtype=np.float32)
++        cfrc_ext = np.asarray(self._env.sim.data.cfrc_ext)
++        if cfrc_ext.ndim != 2 or cfrc_ext.shape[1] < 6:
++            return np.zeros(3, dtype=np.float32)
++        return cfrc_ext[:, 3:6].sum(axis=0).astype(np.float32)
++
++    def _sensorless_external_wrench_estimate(self) -> np.ndarray:
++        """Estimate translational external wrench from actuator torques and the EE Jacobian.
++
++        This follows the MCC paper's sensorless spirit: use actuator-side generalized
++        forces and robot kinematics rather than direct simulator contact forces.
++        """
++        assert self._env is not None
++        robot = self._env.robots[0]
++        sim = self._env.sim
++        data = sim.data
++        if not hasattr(data, "qfrc_actuator") or not hasattr(data, "qfrc_bias"):
++            return np.zeros(3, dtype=np.float32)
++
++        joint_indices = np.asarray(getattr(robot, "_ref_joint_vel_indexes", robot.joint_indexes), dtype=int)
++        if joint_indices.size == 0:
++            return np.zeros(3, dtype=np.float32)
++
++        qfrc_actuator = np.asarray(data.qfrc_actuator, dtype=np.float64)
++        qfrc_bias = np.asarray(data.qfrc_bias, dtype=np.float64)
++        if joint_indices.max(initial=-1) >= qfrc_actuator.shape[0]:
++            return np.zeros(3, dtype=np.float32)
++
++        # In quasi-static contact, qfrc_actuator - qfrc_bias is approximately
++        # the negative external generalized force, so negate before solving
++        # J_p^T f_ext ~= tau_ext.
++        tau_ext = -(qfrc_actuator[joint_indices] - qfrc_bias[joint_indices])
++
++        controller = robot.controller
++        eef_name = getattr(controller, "eef_name", None)
++        if eef_name is None and hasattr(sim.model, "site_id2name"):
++            eef_name = sim.model.site_id2name(robot.eef_site_id)
++        if eef_name is None or not hasattr(data, "get_site_jacp"):
++            return np.zeros(3, dtype=np.float32)
++
++        jacp = np.asarray(data.get_site_jacp(eef_name), dtype=np.float64).reshape(3, -1)
++        jacp = jacp[:, joint_indices]
++        lhs = jacp @ jacp.T + self.mcc_wrench_regularization * np.eye(3)
++        rhs = jacp @ tau_ext
++        try:
++            force = np.linalg.solve(lhs, rhs)
++        except np.linalg.LinAlgError:
++            force = np.linalg.lstsq(lhs, rhs, rcond=None)[0]
++        return force.astype(np.float32)
++
++    def _mcc_external_force_estimate(self) -> np.ndarray:
++        if self.mcc_force_source == "contact":
++            force = self._contact_force_vector()
++        elif self.mcc_force_source == "sensorless":
++            force = self._sensorless_external_wrench_estimate()
++        else:
++            raise ValueError(
++                f"Unsupported mcc_force_source={self.mcc_force_source!r}; "
++                "expected 'sensorless' or 'contact'."
++            )
++        if self.mcc_noisy_enabled and self.mcc_noise_std > 0:
++            force = force + self._mcc_rng.normal(0.0, self.mcc_noise_std, size=3).astype(np.float32)
++        if self._mcc_filtered_force is None:
++            self._mcc_filtered_force = force.astype(np.float32)
++        else:
++            alpha = self.mcc_force_ema_alpha
++            self._mcc_filtered_force = (
++                alpha * force.astype(np.float32) + (1.0 - alpha) * self._mcc_filtered_force
++            )
++        return self._mcc_filtered_force.astype(np.float32)
++
++    def _apply_mcc_noisy_correction(self, action: np.ndarray) -> tuple[np.ndarray, float]:
++        if not self.mcc_noisy_enabled:
++            return action, 0.0
++        corrected = np.asarray(action, dtype=np.float32).copy()
++        if len(self._mcc_force_history) <= self.mcc_delay:
++            return corrected, 0.0
++        force = self._mcc_force_history[-self.mcc_delay - 1]
++        correction = -float(self.mcc_force_gain) * force
++        if self.mcc_correction_clip is not None:
++            correction = np.clip(correction, -self.mcc_correction_clip, self.mcc_correction_clip)
++        dims = min(3, corrected.shape[0])
++        corrected[:dims] += correction[:dims]
++        corrected = np.clip(corrected, ACTION_LOW, ACTION_HIGH)
++        return corrected, float(np.linalg.norm(correction[:dims]))
+ 
+     def step(self, action: np.ndarray) -> tuple[RobotObservation, float, bool, bool, dict[str, Any]]:
+         self._ensure_env()
+@@ -359,16 +525,24 @@
+                 f"Expected action to be 1-D (shape (action_dim,)), "
+                 f"but got shape {action.shape} with ndim={action.ndim}"
+             )
++        action, mcc_correction_norm = self._apply_mcc_noisy_correction(action)
+         raw_obs, reward, done, info = self._env.step(action)
++        force_estimate = self._mcc_external_force_estimate() if self.mcc_noisy_enabled else np.zeros(3)
++        self._mcc_force_history.append(force_estimate)
++        max_history = self.mcc_delay + 4
++        if len(self._mcc_force_history) > max_history:
++            self._mcc_force_history = self._mcc_force_history[-max_history:]
+ 
+         is_success = self._env.check_success()
+-        terminated = done or is_success
++        terminated = should_terminate_episode(done, is_success, self.terminate_on_success)
+         info.update(
+             {
+                 "task": self.task,
+                 "task_id": self.task_id,
+                 "done": done,
+                 "is_success": is_success,
++                "mcc_correction_norm": mcc_correction_norm,
++                **self._mcc_diagnostic_info(),
+             }
+         )
+         observation = self._format_raw_obs(raw_obs)
+@@ -395,6 +569,18 @@
+     control_mode: str,
+     camera_name_mapping: dict[str, str] | None = None,
+     is_libero_plus: bool = False,
++    terminate_on_success: bool = True,
++    controller_kp: float | None = None,
++    controller_damping_ratio: float | None = None,
++    excess_contact_force_threshold: float | None = None,
++    mcc_noisy_enabled: bool = False,
++    mcc_force_gain: float = 0.015,
++    mcc_noise_std: float = 0.15,
++    mcc_delay: int = 2,
++    mcc_force_source: str = "sensorless",
++    mcc_force_ema_alpha: float = 0.9,
++    mcc_wrench_regularization: float = 1e-4,
++    mcc_correction_clip: float | None = None,
+ ) -> list[Callable[[], LiberoEnv]]:
+     """Build n_envs factory callables for a single (suite, task_id)."""
+ 
+@@ -412,6 +598,18 @@
+             control_mode=control_mode,
+             camera_name_mapping=camera_name_mapping,
+             is_libero_plus=is_libero_plus,
++            terminate_on_success=terminate_on_success,
++            controller_kp=controller_kp,
++            controller_damping_ratio=controller_damping_ratio,
++            excess_contact_force_threshold=excess_contact_force_threshold,
++            mcc_noisy_enabled=mcc_noisy_enabled,
++            mcc_force_gain=mcc_force_gain,
++            mcc_noise_std=mcc_noise_std,
++            mcc_delay=mcc_delay,
++            mcc_force_source=mcc_force_source,
++            mcc_force_ema_alpha=mcc_force_ema_alpha,
++            mcc_wrench_regularization=mcc_wrench_regularization,
++            mcc_correction_clip=mcc_correction_clip,
+             **local_kwargs,
+         )
+ 
+@@ -435,6 +633,18 @@
+     episode_length: int | None = None,
+     camera_name_mapping: dict[str, str] | None = None,
+     is_libero_plus: bool = False,
++    terminate_on_success: bool = True,
++    controller_kp: float | None = None,
++    controller_damping_ratio: float | None = None,
++    excess_contact_force_threshold: float | None = None,
++    mcc_noisy_enabled: bool = False,
++    mcc_force_gain: float = 0.015,
++    mcc_noise_std: float = 0.15,
++    mcc_delay: int = 2,
++    mcc_force_source: str = "sensorless",
++    mcc_force_ema_alpha: float = 0.9,
++    mcc_wrench_regularization: float = 1e-4,
++    mcc_correction_clip: float | None = None,
+ ) -> dict[str, dict[int, Any]]:
+     """
+     Create vectorized LIBERO environments with a consistent return shape.
+@@ -494,6 +704,18 @@
+                 control_mode=control_mode,
+                 camera_name_mapping=camera_name_mapping,
+                 is_libero_plus=is_libero_plus,
++                terminate_on_success=terminate_on_success,
++                controller_kp=controller_kp,
++                controller_damping_ratio=controller_damping_ratio,
++                excess_contact_force_threshold=excess_contact_force_threshold,
++                mcc_noisy_enabled=mcc_noisy_enabled,
++                mcc_force_gain=mcc_force_gain,
++                mcc_noise_std=mcc_noise_std,
++                mcc_delay=mcc_delay,
++                mcc_force_source=mcc_force_source,
++                mcc_force_ema_alpha=mcc_force_ema_alpha,
++                mcc_wrench_regularization=mcc_wrench_regularization,
++                mcc_correction_clip=mcc_correction_clip,
+             )
+             if is_async:
+                 lazy = _LazyAsyncVectorEnv(fns, cached_obs_space, cached_act_space, cached_metadata)
+diff --git a/src/lerobot/scripts/lerobot_eval.py b/src/lerobot/scripts/lerobot_eval.py
+--- a/src/lerobot/scripts/lerobot_eval.py
++++ b/src/lerobot/scripts/lerobot_eval.py
+@@ -52,6 +52,7 @@
+ import concurrent.futures as cf
+ import json
+ import logging
++import os
+ import threading
+ import time
+ from collections import defaultdict
+@@ -84,7 +85,7 @@
+ from lerobot.policies import PreTrainedPolicy, make_policy, make_pre_post_processors
+ from lerobot.processor import PolicyProcessorPipeline
+ from lerobot.types import PolicyAction
+-from lerobot.utils.constants import ACTION, DONE, OBS_STR, REWARD
++from lerobot.utils.constants import ACTION, DONE, OBS_STATE, OBS_STR, REWARD
+ from lerobot.utils.device_utils import get_safe_torch_device
+ from lerobot.utils.import_utils import register_third_party_plugins
+ from lerobot.utils.io_utils import write_video
+@@ -93,6 +94,43 @@
+     init_logging,
+     inside_slurm,
+ )
++
++
++def _vector_info_values(info: dict[str, Any], key: str, n_envs: int, default: Any) -> list[Any]:
++    if key in info:
++        value = info[key]
++        if hasattr(value, "tolist"):
++            value = value.tolist()
++        if isinstance(value, list):
++            return value
++        return [value] * n_envs
++    return [default] * n_envs
++
++
++def _apply_eval_observation_perturbations(observation: dict[str, Any]) -> dict[str, Any]:
++    """Apply optional evaluation-only perturbations for robustness sweeps.
++
++    Controlled through environment variables so normal evaluation is unchanged.
++    """
++    proprio_noise = float(os.environ.get("LEROBOT_EVAL_PROPRIO_NOISE_STD", "0") or 0)
++    image_noise = float(os.environ.get("LEROBOT_EVAL_IMAGE_NOISE_STD", "0") or 0)
++    if proprio_noise <= 0 and image_noise <= 0:
++        return observation
++
++    observation = dict(observation)
++    if proprio_noise > 0 and OBS_STATE in observation and torch.is_tensor(observation[OBS_STATE]):
++        observation[OBS_STATE] = observation[OBS_STATE] + proprio_noise * torch.randn_like(
++            observation[OBS_STATE]
++        )
++
++    if image_noise > 0:
++        for key, value in list(observation.items()):
++            if not (isinstance(key, str) and key.startswith("observation.images.") and torch.is_tensor(value)):
++                continue
++            scale = 255.0 if float(value.detach().max().item()) > 2.0 else 1.0
++            noisy = value + (image_noise * scale) * torch.randn_like(value)
++            observation[key] = noisy.clamp(0.0, scale)
++    return observation
+ 
+ 
+ def rollout(
+@@ -121,6 +159,8 @@
+         "reward": A (batch, sequence) tensor of rewards received for applying the actions.
+         "success": A (batch, sequence) tensor of success conditions (the only time this can be True is upon
+             environment termination/truncation).
++        "eef_pos_error", "eef_ori_error", "contact_force_proxy", and "excess_contact": optional
++            MCC-aligned diagnostics emitted by contact-rich environments such as LIBERO.
+         "done": A (batch, sequence) tensor of **cumulative** done conditions. For any given batch element,
+             the first True is followed by True's all the way till the end. This can be used for masking
+             extraneous elements from the sequences above.
+@@ -150,6 +190,14 @@
+     all_rewards = []
+     all_successes = []
+     all_dones = []
++    all_eef_pos_errors = []
++    all_eef_ori_errors = []
++    all_contact_force_proxies = []
++    all_excess_contacts = []
++    save_probe_traces = os.environ.get("LEROBOT_SAVE_PROBE_TRACES", "0") == "1"
++    all_probe_states = []
++    action_delay_steps = int(os.environ.get("LEROBOT_EVAL_ACTION_DELAY_STEPS", "0") or 0)
++    delayed_actions: list[np.ndarray] | None = None
+ 
+     step = 0
+     # Keep track of which environments are done.
+@@ -180,6 +228,9 @@
+ 
+         # Apply environment-specific preprocessing (e.g., LiberoProcessorStep for LIBERO)
+         observation = env_preprocessor(observation)
++        observation = _apply_eval_observation_perturbations(observation)
++        if save_probe_traces and OBS_STATE in observation:
++            all_probe_states.append(observation[OBS_STATE].detach().cpu())
+ 
+         observation = preprocessor(observation)
+         with torch.inference_mode():
+@@ -193,6 +244,12 @@
+         # Convert to CPU / numpy.
+         action_numpy: np.ndarray = action.to("cpu").numpy()
+         assert action_numpy.ndim == 2, "Action dimensions should be (batch, action_dim)"
++        if action_delay_steps > 0:
++            if delayed_actions is None:
++                delayed_actions = [np.zeros_like(action_numpy) for _ in range(action_delay_steps)]
++            action_to_apply = delayed_actions.pop(0)
++            delayed_actions.append(action_numpy.copy())
++            action_numpy = action_to_apply
+ 
+         # Apply the next action.
+         observation, reward, terminated, truncated, info = env.step(action_numpy)
+@@ -217,6 +274,13 @@
+         else:
+             successes = [False] * env.num_envs
+ 
++        eef_pos_errors = _vector_info_values(info, "eef_pos_error", env.num_envs, float("nan"))
++        eef_ori_errors = _vector_info_values(info, "eef_ori_error", env.num_envs, float("nan"))
++        contact_force_proxies = _vector_info_values(
++            info, "contact_force_proxy", env.num_envs, float("nan")
++        )
++        excess_contacts = _vector_info_values(info, "excess_contact", env.num_envs, False)
++
+         # Keep track of which environments are done so far.
+         # Mark the episode as done if we reach the maximum step limit.
+         # This ensures that the rollout always terminates cleanly at `max_steps`,
+@@ -229,6 +293,10 @@
+         all_rewards.append(torch.from_numpy(reward))
+         all_dones.append(torch.from_numpy(done))
+         all_successes.append(torch.tensor(successes))
++        all_eef_pos_errors.append(torch.tensor(eef_pos_errors, dtype=torch.float32))
++        all_eef_ori_errors.append(torch.tensor(eef_ori_errors, dtype=torch.float32))
++        all_contact_force_proxies.append(torch.tensor(contact_force_proxies, dtype=torch.float32))
++        all_excess_contacts.append(torch.tensor(excess_contacts, dtype=torch.bool))
+ 
+         step += 1
+         running_success_rate = (
+@@ -248,7 +316,13 @@
+         "reward": torch.stack(all_rewards, dim=1),
+         "success": torch.stack(all_successes, dim=1),
+         "done": torch.stack(all_dones, dim=1),
++        "eef_pos_error": torch.stack(all_eef_pos_errors, dim=1),
++        "eef_ori_error": torch.stack(all_eef_ori_errors, dim=1),
++        "contact_force_proxy": torch.stack(all_contact_force_proxies, dim=1),
++        "excess_contact": torch.stack(all_excess_contacts, dim=1),
+     }
++    if save_probe_traces and all_probe_states:
++        ret["probe_state"] = torch.stack(all_probe_states, dim=1)
+     if return_observations:
+         stacked_observations = {}
+         for key in all_observations[0]:
+@@ -314,6 +388,14 @@
+     sum_rewards = []
+     max_rewards = []
+     all_successes = []
++    action_smoothnesses = []
++    contact_loss_rates = []
++    final_stabilities = []
++    eef_pos_errors = []
++    eef_ori_errors = []
++    peak_contact_force_proxies = []
++    excess_contact_rates = []
++    contact_force_traces = []
+     all_seeds = []
+     threads = []  # for video saving threads
+     n_episodes_rendered = 0  # for saving the correct number of videos
+@@ -336,6 +418,8 @@
+ 
+     if return_episode_data:
+         episode_data: dict | None = None
++    save_probe_traces = os.environ.get("LEROBOT_SAVE_PROBE_TRACES", "0") == "1"
++    state_traces = []
+ 
+     # we dont want progress bar when we use slurm, since it clutters the logs
+     progbar = trange(n_batches, desc="Stepping through eval batches", disable=inside_slurm())
+@@ -379,6 +463,32 @@
+         max_rewards.extend(batch_max_rewards.tolist())
+         batch_successes = einops.reduce((rollout_data["success"] * mask), "b n -> b", "any")
+         all_successes.extend(batch_successes.tolist())
++        for ep_ix in range(rollout_data[ACTION].shape[0]):
++            compliance_metrics = _compute_compliance_episode_metrics(
++                rollout_data[ACTION][ep_ix],
++                rollout_data["success"][ep_ix],
++                mask[ep_ix],
++            )
++            mcc_metrics = _compute_mcc_episode_metrics(
++                rollout_data["eef_pos_error"][ep_ix],
++                rollout_data["eef_ori_error"][ep_ix],
++                rollout_data["contact_force_proxy"][ep_ix],
++                rollout_data["excess_contact"][ep_ix],
++                mask[ep_ix],
++            )
++            action_smoothnesses.append(compliance_metrics["action_smoothness"])
++            contact_loss_rates.append(compliance_metrics["contact_loss_rate"])
++            final_stabilities.append(compliance_metrics["final_stability"])
++            eef_pos_errors.append(mcc_metrics["eef_pos_error"])
++            eef_ori_errors.append(mcc_metrics["eef_ori_error"])
++            peak_contact_force_proxies.append(mcc_metrics["peak_contact_force_proxy"])
++            excess_contact_rates.append(mcc_metrics["excess_contact_rate"])
++            valid_force_trace = rollout_data["contact_force_proxy"][ep_ix][mask[ep_ix].bool()]
++            contact_force_traces.append(valid_force_trace.tolist())
++            if save_probe_traces and "probe_state" in rollout_data:
++                # Keep the compact proprioceptive state only. Length is T; force trace is also length T.
++                valid_state_trace = rollout_data["probe_state"][ep_ix, : valid_force_trace.shape[0]]
++                state_traces.append(valid_state_trace.cpu().tolist())
+         if seeds:
+             all_seeds.extend(seeds)
+         else:
+@@ -442,13 +552,43 @@
+                 "sum_reward": sum_reward,
+                 "max_reward": max_reward,
+                 "success": success,
++                "action_smoothness": action_smoothness,
++                "contact_loss_rate": contact_loss_rate,
++                "final_stability": final_stability,
++                "eef_pos_error": eef_pos_error,
++                "eef_ori_error": eef_ori_error,
++                "peak_contact_force_proxy": peak_contact_force_proxy,
++                "excess_contact_rate": excess_contact_rate,
++                "contact_force_trace": contact_force_trace,
++                **({"state_trace": state_traces[i]} if save_probe_traces and i < len(state_traces) else {}),
+                 "seed": seed,
+             }
+-            for i, (sum_reward, max_reward, success, seed) in enumerate(
++            for i, (
++                sum_reward,
++                max_reward,
++                success,
++                action_smoothness,
++                contact_loss_rate,
++                final_stability,
++                eef_pos_error,
++                eef_ori_error,
++                peak_contact_force_proxy,
++                excess_contact_rate,
++                contact_force_trace,
++                seed,
++            ) in enumerate(
+                 zip(
+                     sum_rewards[:n_episodes],
+                     max_rewards[:n_episodes],
+                     all_successes[:n_episodes],
++                    action_smoothnesses[:n_episodes],
++                    contact_loss_rates[:n_episodes],
++                    final_stabilities[:n_episodes],
++                    eef_pos_errors[:n_episodes],
++                    eef_ori_errors[:n_episodes],
++                    peak_contact_force_proxies[:n_episodes],
++                    excess_contact_rates[:n_episodes],
++                    contact_force_traces[:n_episodes],
+                     all_seeds[:n_episodes],
+                     strict=True,
+                 )
+@@ -458,6 +598,13 @@
+             "avg_sum_reward": float(np.nanmean(sum_rewards[:n_episodes])),
+             "avg_max_reward": float(np.nanmean(max_rewards[:n_episodes])),
+             "pc_success": float(np.nanmean(all_successes[:n_episodes]) * 100),
++            "action_smoothness": _nanmean(action_smoothnesses[:n_episodes]),
++            "contact_loss_rate": _nanmean(contact_loss_rates[:n_episodes]),
++            "final_stability": _nanmean(final_stabilities[:n_episodes]),
++            "eef_pos_error": _nanmean(eef_pos_errors[:n_episodes]),
++            "eef_ori_error": _nanmean(eef_ori_errors[:n_episodes]),
++            "peak_contact_force_proxy": _nanmean(peak_contact_force_proxies[:n_episodes]),
++            "excess_contact_rate": _nanmean(excess_contact_rates[:n_episodes]),
+             "eval_s": time.time() - start,
+             "eval_ep_s": (time.time() - start) / n_episodes,
+         },
+@@ -470,6 +617,85 @@
+         info["video_paths"] = video_paths
+ 
+     return info
++
++
++def _nanmean(values: list[float]) -> float:
++    if not values:
++        return float("nan")
++    return float(np.nanmean(values))
++
++
++def _compute_compliance_episode_metrics(
++    actions: Tensor,
++    successes: Tensor,
++    mask: Tensor,
++    final_window_fraction: float = 0.2,
++) -> dict[str, float]:
++    """Compute rollout diagnostics that expose compliance-like behavior.
++
++    These are intentionally post-hoc metrics: they use the original task success
++    signal and applied actions, not an explicit compliance reward.
++    """
++    valid = mask.to(dtype=torch.bool)
++    valid_actions = actions[valid]
++    valid_successes = successes[valid].to(dtype=torch.bool)
++    if valid_actions.numel() == 0:
++        return {
++            "action_smoothness": float("nan"),
++            "contact_loss_rate": float("nan"),
++            "final_stability": float("nan"),
++        }
++
++    if valid_actions.shape[0] > 1:
++        action_delta = valid_actions[1:] - valid_actions[:-1]
++        action_smoothness = float(torch.mean(action_delta.square()).item())
++    else:
++        action_smoothness = 0.0
++
++    success_indices = torch.nonzero(valid_successes, as_tuple=False).flatten()
++    if success_indices.numel() == 0:
++        contact_loss_rate = float("nan")
++    else:
++        after_first_success = valid_successes[success_indices[0] :]
++        contact_loss_rate = float((~after_first_success).float().mean().item() * 100.0)
++
++    final_window = max(1, int(np.ceil(valid_successes.numel() * final_window_fraction)))
++    final_stability = float(valid_successes[-final_window:].float().mean().item() * 100.0)
++
++    return {
++        "action_smoothness": action_smoothness,
++        "contact_loss_rate": contact_loss_rate,
++        "final_stability": final_stability,
++    }
++
++
++def _compute_mcc_episode_metrics(
++    eef_pos_errors: Tensor,
++    eef_ori_errors: Tensor,
++    contact_force_proxies: Tensor,
++    excess_contacts: Tensor,
++    mask: Tensor,
++) -> dict[str, float]:
++    valid = mask.to(dtype=torch.bool)
++    if not torch.any(valid):
++        return {
++            "eef_pos_error": float("nan"),
++            "eef_ori_error": float("nan"),
++            "peak_contact_force_proxy": float("nan"),
++            "excess_contact_rate": float("nan"),
++        }
++
++    valid_pos = eef_pos_errors[valid].float()
++    valid_ori = eef_ori_errors[valid].float()
++    valid_force = contact_force_proxies[valid].float()
++    valid_excess = excess_contacts[valid].to(dtype=torch.float32)
++    finite_force = valid_force[~torch.isnan(valid_force)]
++    return {
++        "eef_pos_error": float(torch.nanmean(valid_pos).item()),
++        "eef_ori_error": float(torch.nanmean(valid_ori).item()),
++        "peak_contact_force_proxy": float(finite_force.max().item()) if finite_force.numel() else float("nan"),
++        "excess_contact_rate": float(torch.nanmean(valid_excess).item() * 100.0),
++    }
+ 
+ 
+ def _compile_episode_data(
+@@ -572,7 +798,7 @@
+             preprocessor=preprocessor,
+             postprocessor=postprocessor,
+             n_episodes=cfg.eval.n_episodes,
+-            max_episodes_rendered=10,
++            max_episodes_rendered=cfg.eval.max_episodes_rendered,
+             videos_dir=Path(cfg.output_dir) / "videos",
+             start_seed=cfg.seed,
+             max_parallel_tasks=cfg.env.max_parallel_tasks,
+@@ -599,10 +825,31 @@
+     sum_rewards: list[float]
+     max_rewards: list[float]
+     successes: list[bool]
++    action_smoothnesses: list[float]
++    contact_loss_rates: list[float]
++    final_stabilities: list[float]
++    eef_pos_errors: list[float]
++    eef_ori_errors: list[float]
++    peak_contact_force_proxies: list[float]
++    excess_contact_rates: list[float]
++    contact_force_traces: list[list[float]]
++    state_traces: list[list[list[float]]]
+     video_paths: list[str]
+ 
+ 
+-ACC_KEYS = ("sum_rewards", "max_rewards", "successes", "video_paths")
++ACC_KEYS = (
++    "sum_rewards",
++    "max_rewards",
++    "successes",
++    "action_smoothnesses",
++    "contact_loss_rates",
++    "final_stabilities",
++    "eef_pos_errors",
++    "eef_ori_errors",
++    "peak_contact_force_proxies",
++    "excess_contact_rates",
++    "video_paths",
++)
+ 
+ 
+ def eval_one(
+@@ -642,6 +889,15 @@
+         sum_rewards=[ep["sum_reward"] for ep in per_episode],
+         max_rewards=[ep["max_reward"] for ep in per_episode],
+         successes=[ep["success"] for ep in per_episode],
++        action_smoothnesses=[ep["action_smoothness"] for ep in per_episode],
++        contact_loss_rates=[ep["contact_loss_rate"] for ep in per_episode],
++        final_stabilities=[ep["final_stability"] for ep in per_episode],
++        eef_pos_errors=[ep["eef_pos_error"] for ep in per_episode],
++        eef_ori_errors=[ep["eef_ori_error"] for ep in per_episode],
++        peak_contact_force_proxies=[ep["peak_contact_force_proxy"] for ep in per_episode],
++        excess_contact_rates=[ep["excess_contact_rate"] for ep in per_episode],
++        contact_force_traces=[ep.get("contact_force_trace", []) for ep in per_episode],
++        state_traces=[ep.get("state_trace", []) for ep in per_episode],
+         video_paths=task_result.get("video_paths", []),
+     )
+ 
+@@ -742,6 +998,13 @@
+         _append("sum_rewards", metrics.get("sum_rewards"))
+         _append("max_rewards", metrics.get("max_rewards"))
+         _append("successes", metrics.get("successes"))
++        _append("action_smoothnesses", metrics.get("action_smoothnesses"))
++        _append("contact_loss_rates", metrics.get("contact_loss_rates"))
++        _append("final_stabilities", metrics.get("final_stabilities"))
++        _append("eef_pos_errors", metrics.get("eef_pos_errors"))
++        _append("eef_ori_errors", metrics.get("eef_ori_errors"))
++        _append("peak_contact_force_proxies", metrics.get("peak_contact_force_proxies"))
++        _append("excess_contact_rates", metrics.get("excess_contact_rates"))
+         # video_paths is list-like
+         paths = metrics.get("video_paths", [])
+         if paths:
+@@ -812,6 +1075,13 @@
+             "avg_sum_reward": _agg_from_list(acc["sum_rewards"]),
+             "avg_max_reward": _agg_from_list(acc["max_rewards"]),
+             "pc_success": _agg_from_list(acc["successes"]) * 100 if acc["successes"] else float("nan"),
++            "action_smoothness": _agg_from_list(acc["action_smoothnesses"]),
++            "contact_loss_rate": _agg_from_list(acc["contact_loss_rates"]),
++            "final_stability": _agg_from_list(acc["final_stabilities"]),
++            "eef_pos_error": _agg_from_list(acc["eef_pos_errors"]),
++            "eef_ori_error": _agg_from_list(acc["eef_ori_errors"]),
++            "peak_contact_force_proxy": _agg_from_list(acc["peak_contact_force_proxies"]),
++            "excess_contact_rate": _agg_from_list(acc["excess_contact_rates"]),
+             "n_episodes": len(acc["sum_rewards"]),
+             "video_paths": list(acc["video_paths"]),
+         }
+@@ -821,6 +1091,13 @@
+         "avg_sum_reward": _agg_from_list(overall["sum_rewards"]),
+         "avg_max_reward": _agg_from_list(overall["max_rewards"]),
+         "pc_success": _agg_from_list(overall["successes"]) * 100 if overall["successes"] else float("nan"),
++        "action_smoothness": _agg_from_list(overall["action_smoothnesses"]),
++        "contact_loss_rate": _agg_from_list(overall["contact_loss_rates"]),
++        "final_stability": _agg_from_list(overall["final_stabilities"]),
++        "eef_pos_error": _agg_from_list(overall["eef_pos_errors"]),
++        "eef_ori_error": _agg_from_list(overall["eef_ori_errors"]),
++        "peak_contact_force_proxy": _agg_from_list(overall["peak_contact_force_proxies"]),
++        "excess_contact_rate": _agg_from_list(overall["excess_contact_rates"]),
+         "n_episodes": len(overall["sum_rewards"]),
+         "eval_s": time.time() - start_t,
+         "eval_ep_s": (time.time() - start_t) / max(1, len(overall["sum_rewards"])),
+diff --git a/src/lerobot/configs/default.py b/src/lerobot/configs/default.py
+--- a/src/lerobot/configs/default.py
++++ b/src/lerobot/configs/default.py
+@@ -67,6 +67,7 @@
+ @dataclass
+ class EvalConfig:
+     n_episodes: int = 50
++    max_episodes_rendered: int = 0
+     # `batch_size` specifies the number of environments to use in a gym.vector.VectorEnv.
+     # Set to 0 for auto-tuning based on available CPU cores and n_episodes.
+     batch_size: int = 0
+diff --git a/src/lerobot/scripts/lerobot_train.py b/src/lerobot/scripts/lerobot_train.py
+--- a/src/lerobot/scripts/lerobot_train.py
++++ b/src/lerobot/scripts/lerobot_train.py
+@@ -62,6 +62,39 @@
+ from .lerobot_eval import eval_policy_all
+ 
+ 
++def _episode_frame_ranges_for_sampler(dataset) -> tuple[list[int], list[int], list[int] | None]:
++    """Return episode frame ranges in the same index space as ``dataset.__getitem__``."""
++    episode_from_indices = dataset.meta.episodes["dataset_from_index"]
++    episode_to_indices = dataset.meta.episodes["dataset_to_index"]
++
++    if dataset.episodes is None:
++        return episode_from_indices, episode_to_indices, None
++
++    # ``LeRobotDataset(episodes=...)`` filters the underlying HF dataset, so
++    # ``__getitem__`` expects local row indices. Metadata ranges remain global
++    # frame indices, so remap each selected episode before constructing the
++    # episode-aware sampler.
++    _ = dataset.hf_dataset
++    absolute_to_relative_idx = getattr(dataset.reader, "_absolute_to_relative_idx", None)
++    if absolute_to_relative_idx is None:
++        raise RuntimeError("Episode-filtered dataset did not build an absolute-to-relative index map.")
++
++    local_from_indices = []
++    local_to_indices = []
++    for episode_idx in dataset.episodes:
++        start_idx = int(episode_from_indices[episode_idx])
++        end_idx = int(episode_to_indices[episode_idx])
++        try:
++            local_from_indices.append(absolute_to_relative_idx[start_idx])
++            local_to_indices.append(absolute_to_relative_idx[end_idx - 1] + 1)
++        except KeyError as exc:
++            raise RuntimeError(
++                f"Could not remap episode {episode_idx} into the filtered dataset index space."
++            ) from exc
++
++    return local_from_indices, local_to_indices, None
++
++
+ def update_policy(
+     train_metrics: MetricsTracker,
+     policy: PreTrainedPolicy,
+@@ -196,6 +229,7 @@
+         # Force the device to be CPU when the active config's device is set to CPU (works for both policy and reward model training).
+         force_cpu = cfg.trainable_config.device == "cpu"
+         accelerator = Accelerator(
++            mixed_precision="bf16" if cfg.trainable_config.use_amp and not force_cpu else "no",
+             step_scheduler_with_optimizer=False,
+             kwargs_handlers=[ddp_kwargs],
+             cpu=force_cpu,
+@@ -385,10 +419,13 @@
+     # create dataloader for offline training
+     if hasattr(active_cfg, "drop_n_last_frames"):
+         shuffle = False
++        dataset_from_indices, dataset_to_indices, episode_indices_to_use = _episode_frame_ranges_for_sampler(
++            dataset
++        )
+         sampler = EpisodeAwareSampler(
+-            dataset.meta.episodes["dataset_from_index"],
+-            dataset.meta.episodes["dataset_to_index"],
+-            episode_indices_to_use=dataset.episodes,
++            dataset_from_indices,
++            dataset_to_indices,
++            episode_indices_to_use=episode_indices_to_use,
+             drop_n_last_frames=active_cfg.drop_n_last_frames,
+             shuffle=True,
+         )
+@@ -403,7 +440,7 @@
+         shuffle=shuffle and not cfg.dataset.streaming,
+         sampler=sampler,
+         pin_memory=device.type == "cuda",
+-        drop_last=False,
++        drop_last=True,
+         prefetch_factor=cfg.prefetch_factor if cfg.num_workers > 0 else None,
+         persistent_workers=cfg.persistent_workers and cfg.num_workers > 0,
+     )

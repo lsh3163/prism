@@ -1,0 +1,168 @@
+{
+  "schema_version": 1,
+  "actor_variant": "g1_residual_poly_v1",
+  "status": "source extraction with actor/tensor parity, bounded nominal simulator validation and exact 200-step trajectory parity; paper reproduction unresolved",
+  "scope": "simulation only",
+  "upstream": [
+    {
+      "name": "unitree_rl_gym",
+      "url": "https://github.com/unitreerobotics/unitree_rl_gym.git",
+      "commit": "276801e46c5d433564f24658bac64f254b7d2d4b",
+      "source_worktree_has_uncommitted_changes": true
+    },
+    {
+      "name": "rsl_rl",
+      "url": "https://github.com/leggedrobotics/rsl_rl.git",
+      "commit": "2ad79cf0caa85b91721abfe358105f869a784121",
+      "source_worktree_has_uncommitted_changes": true
+    }
+  ],
+  "source_files": [
+    {
+      "repository": "unitree_rl_gym",
+      "path": "legged_gym/envs/g1/g1_config.py",
+      "sha256": "6c3e1c8fd673b9e7d39fd24691cdb57d4a9b19433c7e63622a2e93bc2fc80075"
+    },
+    {
+      "repository": "unitree_rl_gym",
+      "path": "legged_gym/envs/g1/g1_env.py",
+      "sha256": "b572ce5ca93d7f289bd813ad4d333fa91d816334b7856c359a62bafcf9d5a2c4"
+    },
+    {
+      "repository": "unitree_rl_gym",
+      "path": "legged_gym/envs/base/legged_robot.py",
+      "sha256": "dc3ca127540416650a2543b0e2518096604a77bcef081e8d37bbcdb2aa0ef035"
+    },
+    {
+      "repository": "unitree_rl_gym",
+      "path": "legged_gym/envs/base/legged_robot_config.py",
+      "sha256": "56490b576783e0418dc50390999ab85272b56a39634bcadb8d296a7c031444f4"
+    },
+    {
+      "repository": "unitree_rl_gym",
+      "path": "legged_gym/utils/helpers.py",
+      "sha256": "58ae499e307b86055ef5a50d8aed0b8c4463916bffc46be9002ed68cf312946e"
+    },
+    {
+      "repository": "unitree_rl_gym",
+      "path": "legged_gym/scripts/eval_humanoidgym_model.py",
+      "sha256": "b6a7b84bec9852849d6f0e7464138a8b9ea8db4d3410ef04942271df747d9b06"
+    },
+    {
+      "repository": "unitree_rl_gym",
+      "path": "legged_gym/scripts/probe_humanoidgym_hidden_physics.py",
+      "sha256": "f53b414ee0e92afc459d7948fff797f0faf17acd6430db81d441459eae0f6e03"
+    },
+    {
+      "repository": "unitree_rl_gym",
+      "path": "legged_gym/scripts/probe_humanoidgym_future_response.py",
+      "sha256": "1c96b8912c5984a524dd68a4f41f55ebe9ac7cf4e8fec668a50cd1541dd12c9a"
+    },
+    {
+      "repository": "unitree_rl_gym",
+      "path": "legged_gym/scripts/run_humanoidgym_respoly_results_suite.sh",
+      "sha256": "d12f0fa649133ee8c29bc716cc3acce6a28dab65ce5dad2632617560f1e010da"
+    },
+    {
+      "repository": "rsl_rl",
+      "path": "rsl_rl/modules/actor_critic.py",
+      "sha256": "f21a008308f372c539664fdd3bde29b98826b1ddd0ea23128e4c484650e3a921"
+    },
+    {
+      "repository": "rsl_rl",
+      "path": "rsl_rl/modules/actor_critic_sota.py",
+      "sha256": "7a1361bba2e3adeea28b8d155c5c848634becd0f87ea0b53fb9cd9c2fadeea0e"
+    },
+    {
+      "repository": "rsl_rl",
+      "path": "rsl_rl/algorithms/ppo.py",
+      "sha256": "89551b805fe9aeccf98b8073b84c32822255754feda926887f90388d823da927"
+    },
+    {
+      "repository": "rsl_rl",
+      "path": "rsl_rl/runners/on_policy_runner.py",
+      "sha256": "34b72f0f809ed256b43445e1118c06a19d27a20de2e76f1e84db31b5eb7d4281"
+    }
+  ],
+  "extraction": {
+    "actor.py": "Exact ActorCritic/get_activation and LayerNormMLP/PolyEncoder/ResidualPolyEncoder/PolyActorCritic class bodies; remove relative import and unrelated LayerNormActorCritic; formatting only.",
+    "config.py": "G1RoughCfg plus G1HumanoidGymCfg and six PPO variants. Remove disabled sound configuration; retain experiment values.",
+    "g1_env.py": "Specialize to humanoid_gym_style=True, falcon_style=False, no feature lifting/audio/depth/penalty curriculum. Retain actor/critic history, gait and 17 G1 reward methods.",
+    "legacy_base.py": "Overrides for step/post_physics/reset, rigid-body mass and shape friction, action delay, PD gains/torque, push and initialization. Remove disabled acoustic-material, FALCON and grouped-reward branches. Other behavior/assets inherited from pinned upstream.",
+    "runtime.py": "Process-local task and actor registration. Add one warmup advance after a PPO update only when the research hook is absent.",
+    "train.py": "Use upstream CLI and runner, propagate requested seed to environment and training config. Require resolved nonnegative seeds and explicit resume selection. Write training-start metadata in an exclusively created fresh run directory; preserve model/optimizer/checkpoint computation.",
+    "evaluate.py": "Preserve historical evaluation math; remove disabled sound settings, use extracted registration, propagate environment seed, explicitly restrict to plane terrain.",
+    "probes": "Preserve historical targets, filters and fitting. Import extracted actor/tasks; require explicit checkpoints; replace personal output paths with relative outputs; propagate environment seed. Remove unused allocation only.",
+    "provenance.py": "Release-only portable metadata helper: resolved configuration/actor identity, source and checkpoint hashes, available git revisions, and runtime versions. Does not modify model state.",
+    "run_suite.py": "Explicit seed/variant matrix, previews by default; --execute launches training. Retain --dry-run as an explicit preview flag."
+  },
+  "inspected_environment": {
+    "python": "3.8",
+    "torch": "2.3.1",
+    "torch_cuda": "12.1",
+    "numpy": "1.20.0",
+    "isaacgym": "1.0.preview4",
+    "rsl_rl": "1.0.2"
+  },
+  "validation": {
+    "actor_reference_parity": "passed: six variants; exact output equality, polynomial gradients, strict state dict loads",
+    "trained_checkpoint": {
+      "relative_source_path": "logs/respoly_g1_humanoidgym_seed1_respoly_d2_warmup/Apr17_16-57-55_/model_3001.pt",
+      "sha256": "f05a364979651edf297c008ae9e4e00fba824aeaa56208f185a86f78c1914183",
+      "included_in_release": false,
+      "result": "strict load and exact CPU action equality passed"
+    },
+    "environment_tensor_parity": "passed: three noisy history updates and all 17 G1-specific reward functions on identical synthetic states",
+    "clean_pinned_import": "passed under Python3.8 + IsaacGym Preview4, all six task registrations; no simulator constructed",
+    "simulator_rollout": {
+      "status": "passed",
+      "started_utc": "2026-09-13T14:36:38.466317+00:00",
+      "actor_variant": "g1_residual_poly_v1",
+      "task": "g1_humanoidgym_ppo_poly_warmup",
+      "checkpoint_sha256": "f05a364979651edf297c008ae9e4e00fba824aeaa56208f185a86f78c1914183",
+      "clean_pinned_upstream": true,
+      "seed": 1,
+      "num_envs": 1,
+      "num_episodes": 1,
+      "control_steps": 2400,
+      "simulated_seconds": 24.0,
+      "condition": "nominal plane, observation noise and domain randomization disabled, no pushes",
+      "survived_to_timeout": true,
+      "mean_return": 148.49676513671875,
+      "mean_planar_velocity_error_m_per_s": 0.1438414603471756,
+      "mean_absolute_yaw_rate_error_rad_per_s": 0.04850826784968376,
+      "wall_seconds": 151.36408500200014,
+      "exit_code": 0,
+      "local_evidence_directory": "outputs/prism_release_validation/20260913T143558Z/humanoid",
+      "local_evidence_included_in_release": false,
+      "paper_result_claim": false
+    },
+    "paper_table_mapping": "unresolved",
+    "short_trajectory_comparison": {
+      "status": "passed: exact equality",
+      "comparison": "clean pinned upstream plus extraction versus original modified research environment",
+      "seed": 1,
+      "num_envs": 1,
+      "control_steps": 200,
+      "checkpoint_sha256": "f05a364979651edf297c008ae9e4e00fba824aeaa56208f185a86f78c1914183",
+      "arrays": [
+        "observations_before_action",
+        "actions",
+        "rewards",
+        "dones",
+        "root_states_after_step"
+      ],
+      "maximum_absolute_difference": 0.0,
+      "crossed_episode_reset": false,
+      "randomized_physics": false,
+      "local_evidence_file": "outputs/prism_release_validation/20260913T143558Z/humanoid/trajectory_comparison.json"
+    },
+    "training_provenance": "CPU tests cover output-directory exclusivity, checkpoint hash changes, resolved metadata identity and suite/dry-run execution boundaries; Python3.8 clean pinned import/config serialization checked without constructing a simulator."
+  },
+  "remaining": [
+    "Longer matched-source trajectories across episode resets and training randomization (noisy/delayed actions, PD gains, friction/mass/pushes)",
+    "Exact paper checkpoint/evaluation/seed aggregation mapping, including seeds3-5",
+    "Exact low-friction/payload and fixed-command trace protocols",
+    "Future-response ridge/OLS and split convention reconciliation"
+  ]
+}

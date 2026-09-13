@@ -4,6 +4,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .venv/
+/uv.lock
 build/
 dist/
 
@@ -16,3 +17,6 @@ wandb/
 *.ckpt
 *.pt
 *.pth
+*.safetensors
+*.command.json
+MUJOCO_LOG.TXT

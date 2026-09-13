@@ -1,0 +1,390 @@
+{
+  "dataset": {
+    "repo_id": "HuggingFaceVLA/libero",
+    "root": null,
+    "episodes": [
+      1272,
+      1273,
+      1275,
+      1282,
+      1300,
+      1327,
+      1330,
+      1344,
+      1347,
+      1352,
+      1368,
+      1379,
+      1382,
+      1395,
+      1397,
+      1401,
+      1410,
+      1425,
+      1449,
+      1450,
+      1491,
+      1493,
+      1500,
+      1504,
+      1506,
+      1517,
+      1527,
+      1532,
+      1560,
+      1563,
+      1567,
+      1568,
+      1574,
+      1579,
+      1583,
+      1589,
+      1597,
+      1602,
+      1615,
+      1617,
+      1642,
+      1660,
+      1669,
+      1672,
+      1679
+    ],
+    "image_transforms": {
+      "enable": false,
+      "max_num_transforms": 3,
+      "random_order": false,
+      "tfs": {
+        "brightness": {
+          "weight": 1.0,
+          "type": "ColorJitter",
+          "kwargs": {
+            "brightness": [
+              0.8,
+              1.2
+            ]
+          }
+        },
+        "contrast": {
+          "weight": 1.0,
+          "type": "ColorJitter",
+          "kwargs": {
+            "contrast": [
+              0.8,
+              1.2
+            ]
+          }
+        },
+        "saturation": {
+          "weight": 1.0,
+          "type": "ColorJitter",
+          "kwargs": {
+            "saturation": [
+              0.5,
+              1.5
+            ]
+          }
+        },
+        "hue": {
+          "weight": 1.0,
+          "type": "ColorJitter",
+          "kwargs": {
+            "hue": [
+              -0.05,
+              0.05
+            ]
+          }
+        },
+        "sharpness": {
+          "weight": 1.0,
+          "type": "SharpnessJitter",
+          "kwargs": {
+            "sharpness": [
+              0.5,
+              1.5
+            ]
+          }
+        },
+        "affine": {
+          "weight": 1.0,
+          "type": "RandomAffine",
+          "kwargs": {
+            "degrees": [
+              -5.0,
+              5.0
+            ],
+            "translate": [
+              0.05,
+              0.05
+            ]
+          }
+        }
+      }
+    },
+    "revision": null,
+    "use_imagenet_stats": true,
+    "video_backend": "torchcodec",
+    "return_uint8": false,
+    "streaming": false
+  },
+  "env": {
+    "type": "libero",
+    "task": "libero_spatial",
+    "fps": 30,
+    "features": {
+      "action": {
+        "type": "ACTION",
+        "shape": [
+          7
+        ]
+      },
+      "pixels/agentview_image": {
+        "type": "VISUAL",
+        "shape": [
+          360,
+          360,
+          3
+        ]
+      },
+      "pixels/robot0_eye_in_hand_image": {
+        "type": "VISUAL",
+        "shape": [
+          360,
+          360,
+          3
+        ]
+      },
+      "robot_state/eef/pos": {
+        "type": "STATE",
+        "shape": [
+          3
+        ]
+      },
+      "robot_state/eef/quat": {
+        "type": "STATE",
+        "shape": [
+          4
+        ]
+      },
+      "robot_state/eef/mat": {
+        "type": "STATE",
+        "shape": [
+          3,
+          3
+        ]
+      },
+      "robot_state/gripper/qpos": {
+        "type": "STATE",
+        "shape": [
+          2
+        ]
+      },
+      "robot_state/gripper/qvel": {
+        "type": "STATE",
+        "shape": [
+          2
+        ]
+      },
+      "robot_state/joints/pos": {
+        "type": "STATE",
+        "shape": [
+          7
+        ]
+      },
+      "robot_state/joints/vel": {
+        "type": "STATE",
+        "shape": [
+          7
+        ]
+      }
+    },
+    "features_map": {
+      "action": "action",
+      "robot_state/eef/pos": "observation.state.eef_pos",
+      "robot_state/eef/quat": "observation.state.eef_quat",
+      "robot_state/eef/mat": "observation.state.eef_mat",
+      "robot_state/gripper/qpos": "observation.state.gripper_qpos",
+      "robot_state/gripper/qvel": "observation.state.gripper_qvel",
+      "robot_state/joints/pos": "observation.state.joint_pos",
+      "robot_state/joints/vel": "observation.state.joint_vel",
+      "pixels/agentview_image": "observation.images.image",
+      "pixels/robot0_eye_in_hand_image": "observation.images.image2"
+    },
+    "max_parallel_tasks": 1,
+    "disable_env_checker": true,
+    "task_ids": [
+      0
+    ],
+    "episode_length": null,
+    "obs_type": "pixels_agent_pos",
+    "render_mode": "rgb_array",
+    "camera_name": "agentview_image,robot0_eye_in_hand_image",
+    "init_states": true,
+    "camera_name_mapping": null,
+    "observation_height": 360,
+    "observation_width": 360,
+    "is_libero_plus": false,
+    "control_mode": "relative",
+    "terminate_on_success": true,
+    "controller_kp": null,
+    "controller_damping_ratio": null,
+    "excess_contact_force_threshold": null,
+    "mcc_noisy_enabled": false,
+    "mcc_force_gain": 0.015,
+    "mcc_noise_std": 0.15,
+    "mcc_delay": 2
+  },
+  "policy": {
+    "type": "diffusion",
+    "n_obs_steps": 2,
+    "input_features": {
+      "observation.images.image": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          256,
+          256
+        ]
+      },
+      "observation.images.image2": {
+        "type": "VISUAL",
+        "shape": [
+          3,
+          256,
+          256
+        ]
+      },
+      "observation.state": {
+        "type": "STATE",
+        "shape": [
+          8
+        ]
+      }
+    },
+    "output_features": {
+      "action": {
+        "type": "ACTION",
+        "shape": [
+          7
+        ]
+      }
+    },
+    "device": "cuda",
+    "use_amp": true,
+    "use_peft": false,
+    "push_to_hub": false,
+    "repo_id": "local/diffusion-libero-libero_spatial-seed0",
+    "private": null,
+    "tags": null,
+    "license": null,
+    "pretrained_path": null,
+    "horizon": 16,
+    "n_action_steps": 8,
+    "normalization_mapping": {
+      "VISUAL": "MEAN_STD",
+      "STATE": "MIN_MAX",
+      "ACTION": "MIN_MAX"
+    },
+    "drop_n_last_frames": 7,
+    "vision_backbone": "resnet18",
+    "resize_shape": [
+      128,
+      128
+    ],
+    "crop_ratio": 1.0,
+    "crop_shape": null,
+    "crop_is_random": true,
+    "pretrained_backbone_weights": null,
+    "use_group_norm": true,
+    "spatial_softmax_num_keypoints": 32,
+    "use_separate_rgb_encoder_per_camera": false,
+    "down_dims": [
+      128,
+      256,
+      512
+    ],
+    "kernel_size": 5,
+    "n_groups": 8,
+    "diffusion_step_embed_dim": 128,
+    "use_film_scale_modulation": true,
+    "noise_scheduler_type": "DDPM",
+    "num_train_timesteps": 100,
+    "beta_schedule": "squaredcos_cap_v2",
+    "beta_start": 0.0001,
+    "beta_end": 0.02,
+    "prediction_type": "epsilon",
+    "clip_sample": true,
+    "clip_sample_range": 1.0,
+    "num_inference_steps": 10,
+    "compile_model": false,
+    "compile_mode": "reduce-overhead",
+    "do_mask_loss_for_padding": false,
+    "use_poly_compliance": false,
+    "poly_compliance_context_dim": 64,
+    "poly_compliance_hidden_dim": 128,
+    "poly_compliance_scale": 1.0,
+    "poly_compliance_loss_weight": 0.1,
+    "poly_compliance_freeze_base": false,
+    "optimizer_lr": 0.0001,
+    "optimizer_betas": [
+      0.95,
+      0.999
+    ],
+    "optimizer_eps": 1e-08,
+    "optimizer_weight_decay": 1e-06,
+    "scheduler_name": "cosine",
+    "scheduler_warmup_steps": 500
+  },
+  "reward_model": null,
+  "output_dir": "outputs/paper_diffusion_libero_per_task/seed0/spatial_per_task_il_d128_img128/libero_spatial/task_0/diffusion",
+  "job_name": "libero_diffusion",
+  "resume": false,
+  "seed": 0,
+  "cudnn_deterministic": false,
+  "num_workers": 4,
+  "batch_size": 8,
+  "prefetch_factor": 4,
+  "persistent_workers": true,
+  "steps": 20000,
+  "eval_freq": 0,
+  "log_freq": 200,
+  "tolerance_s": 0.0001,
+  "save_checkpoint": true,
+  "save_freq": 10000,
+  "use_policy_training_preset": true,
+  "optimizer": {
+    "type": "adam",
+    "lr": 0.0001,
+    "weight_decay": 1e-06,
+    "grad_clip_norm": 10.0,
+    "betas": [
+      0.95,
+      0.999
+    ],
+    "eps": 1e-08
+  },
+  "scheduler": {
+    "type": "diffuser",
+    "num_warmup_steps": 500,
+    "name": "cosine"
+  },
+  "eval": {
+    "n_episodes": 10,
+    "max_episodes_rendered": 0,
+    "batch_size": 1,
+    "use_async_envs": true
+  },
+  "wandb": {
+    "enable": false,
+    "disable_artifact": false,
+    "project": "lerobot",
+    "entity": null,
+    "notes": null,
+    "run_id": null,
+    "mode": null,
+    "add_tags": true
+  },
+  "peft": null,
+  "sample_weighting": null,
+  "rename_map": {},
+  "checkpoint_path": null
+}
