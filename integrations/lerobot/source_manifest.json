@@ -7,7 +7,7 @@
     {
       "source": "diffusion_conditioner.py",
       "target": "src/lerobot/policies/diffusion/prism_conditioner.py",
-      "sha256": "d8c1ed15c0a814d3b0a1477bc663bf6cc6e6dc602ff9d988e2a93e59b16a7fa9"
+      "sha256": "7d841d7ad73c055ebe7a3ec68dd98eeff142e50013cd6b04037dca91a3dc23a0"
     },
     {
       "source": "libero_episode.py",
@@ -19,13 +19,13 @@
     {
       "upstream_path": "src/lerobot/policies/diffusion/configuration_diffusion.py",
       "upstream_sha256": "d97319978bd9d1d66d8932318612e4c77455fdddaa53e462e8f7786aedaf3c4d",
-      "release_sha256": "b55b6d897e8f304b1ef2a7d8e9a301569c8863d370afa47cedcb4ffc0c6cd6f4",
+      "release_sha256": "ca79dc7eb1a3129934ecf21b873c717729de173d629048943be1f9949254042e",
       "workspace_source_sha256": "609edfc54a73f964907abb57c18e6d2421481487adeb5e29e306a82d06d88938"
     },
     {
       "upstream_path": "src/lerobot/policies/diffusion/modeling_diffusion.py",
       "upstream_sha256": "be60a7611f22cc100b492317b110e965b96f5ed6a91afc8e38cbca9fa00f853d",
-      "release_sha256": "4f5ef0a8cf6403fcfbd6c3aad8d3327e1619a8afdb47cc6fd0e42fede5f45890",
+      "release_sha256": "10624b2459f876a063c234501a1cd51bd9f26908fcf440d807826133ed800fda",
       "workspace_source_sha256": "da31f1c8d89ca66933f7921386de27b84d4e3b55f11be94f0718f9482e97bfd3"
     },
     {
@@ -59,32 +59,32 @@
       "workspace_source_sha256": "88c530fcf6cf62822ca3ba23b05f2f00f90fcc43611e6df8717d75f067438c01"
     }
   ],
-  "actor_variant": "diffusion_factorized_state_v1",
-  "historical_source_note": "Extracted from the local simulation implementation over the pinned upstream commit; historical training commits were not recorded. Source hashes identify the reviewed extraction, not the source revision of past runs.",
+  "actor_variant": "diffusion_gated_state_v2",
+  "historical_source_note": "Historical simulation code was extracted over the pinned upstream commit; historical training commits were not recorded. The new gated Diffusion actor is an explicit release extension. Source hashes identify this release, not the source revision of past runs.",
   "exclusions": [
     "hardware code and results",
     "action-residual execution",
     "unrelated hub config registration",
     "real-robot chunk blending",
-    "new canonical PRISM actor variants"
+    "automatic conversion to standalone-core checkpoint schemas"
   ],
   "smolvla": {
     "patch": "../lerobot-smolvla.patch",
     "original_upstream_commit": "2d7a42011a4f8e05a8c85d5fb908da258d4cc7b1",
     "also_applies_to": "d656da8ccca5989ff0a2207e81fbfa2c2d5bafb1",
-    "sha256": "7f98e58942270c2b5d17233b1d910e5409d373251e0a068a4d5218c20a787146",
+    "sha256": "042d0bcdc5b7712045d5be04dbb9f5d52b46f516ebc34c48d28caa6d67603d7b",
     "actor_variant": "smolvla_gated_quadratic_v1",
     "checkpoint_note": "Preserves left_proj/right_proj/quadratic_scale and external state_output_norm. No migration to standalone core keys.",
     "files": [
       {
         "upstream_path": "src/lerobot/policies/smolvla/configuration_smolvla.py",
         "upstream_sha256": "2fb637cb428fa2fdf1d114646dcffaf4728216bfe5b7039d5d0cac4857ffc4e0",
-        "release_sha256": "5f29a4e702146eec3df793ff4ff2f6ee2ee7016a4668529e3f54e801f5e02952"
+        "release_sha256": "d2b571b3c82a9f06c5aba906d1976d2df02c44061264882c5f4b4d38472ce71a"
       },
       {
         "upstream_path": "src/lerobot/policies/smolvla/modeling_smolvla.py",
         "upstream_sha256": "5daaa297954acf9ae89397b571322f07bf30798e72f566e61a09393342cb1f99",
-        "release_sha256": "7f12d5c155a65f1775cdeae2cf5ee6ed657f4e70fc372938f9efb2e6b9fd5a6f"
+        "release_sha256": "12bca184605f016170801f59169dc02a0b84db3ccae8d762bc99f316d8c46794"
       }
     ]
   },
@@ -116,9 +116,11 @@
   ],
   "runtime_notes": [
     "Historical main Diffusion training used seed0; eval scripts left EvalPipelineConfig.seed at1000.",
-    "Historical baseline configs use batch8/workers4; PRISM uses batch64/workers8. matched-baseline is a new rerun control.",
+    "Historical baseline configs use batch 8/workers 4; legacy PRISM uses batch 64/workers 8. New prism and baseline profiles both use batch 64/workers 8; matched-baseline aliases baseline, historical-baseline aliases legacy-baseline. New gated training and matched controls require new results.",
     "Current reviewed training source enables bf16 when use_amp=true and drops incomplete batches. Historical configs alone do not establish the exact training-code revision.",
-    "LIBERO evaluation diagnostics/noise/delay and MCC code are preserved from the reviewed workspace. No new dynamics perturbations are claimed."
+    "LIBERO evaluation diagnostics/noise/delay and MCC code are preserved from the reviewed workspace. No new dynamics perturbations are claimed.",
+    "New training profile prism uses learned per-feature gated_quadratic with alpha initialized to0.01. Historical latent_quadratic checkpoints and archived recipe remain explicit legacy; no historical result is reassigned to gated v2.",
+    "Both Diffusion and SmolVLA reject missing/extra gate checkpoint schemas even through LeRobot strict=False loading. Legacy ungated defaults remain for historical config parsing; new runners explicitly select learned gates."
   ],
   "post_extraction_fixes": [
     {
@@ -129,5 +131,12 @@
       "compatibility": "Actor and checkpoints unchanged. Full-horizon diagnostics differ from historical early-stop evaluation; original-semantics smoke artifacts are retained separately."
     }
   ],
-  "patch_sha256": "789a7b00a5e9417262aab6f5742d0ba4b9138c2052ea892265de5154c5b10138"
+  "patch_sha256": "bdce91ced43202ee2b65215ac9bb377c55c4f3c4be168157ee87851dbf1d91fb",
+  "legacy_actor_variant": "diffusion_factorized_state_v1",
+  "default_training_profile": "prism",
+  "legacy_training_profile": "legacy-prism",
+  "actor_variants": {
+    "gated_quadratic": "diffusion_gated_state_v2",
+    "latent_quadratic": "diffusion_factorized_state_v1"
+  }
 }

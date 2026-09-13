@@ -38,6 +38,17 @@ PRISM adds learned polynomial interactions to a policy's proprioceptive branch.
 This repository provides a standalone PyTorch conditioner and integrations for
 G1 PPO, Diffusion Policy, BFM-Zero, and SmolVLA.
 
+All default PRISM training recipes use the same learned gated interaction:
+`u = A1(x)`, `v = A2(x)`, `phi = u * (1 + alpha * v)`. Each latent feature has
+its own trainable `alpha`, initialized to 0.01 and optimized with the policy's
+existing loss. Observation preprocessing, output projections, and policy
+backbones remain specific to each integration.
+
+G1 and Diffusion now use new gated actor versions. Their historical actors and
+checkpoints remain available through explicit legacy recipes. Existing G1 and
+Diffusion results do not evaluate the new gated versions; new training and
+evaluation are required. See the [migration guide](GATED_MIGRATION.md).
+
 ## Quick start
 
 ```bash
@@ -76,12 +87,13 @@ Existing backbone checkpoints use the specific adapters listed below.
 
 | Backbone | Representation | Guide |
 |---|---|---|
-| G1 PPO | Residual polynomial encoder; degree-2 warmup and fixed-degree ablations | [Humanoid-Gym integration](integrations/humanoid-gym/README.md) |
-| LeRobot Diffusion | Factorized quadratic state-history conditioner | [Diffusion setup and experiments](integrations/lerobot/README.md) |
+| G1 PPO | Learned gated encoder; degree 2 by default, degree 1/2/3 ablations | [Humanoid-Gym integration](integrations/humanoid-gym/README.md) |
+| LeRobot Diffusion | Learned gated quadratic state-history conditioner | [Diffusion setup and experiments](integrations/lerobot/README.md) |
 | BFM-Zero | Gated quadratic filter on `history_actor` | [Pinned patches](integrations/README.md), [training and evaluation](REPRODUCIBILITY.md#bfm-zero) |
 | LeRobot SmolVLA | Gated quadratic proprioceptive projection | [LeRobot integration](integrations/lerobot/README.md), [protocol](REPRODUCIBILITY.md#smolvla) |
 
-These adapters preserve different computations and checkpoint schemas. Use the
+These adapters share the gated interaction and preserve their own interfaces and
+checkpoint schemas. Use the
 [actor contracts](ACTOR_CONTRACT.md) and [architecture registry](configs/actor_contracts.json)
 to select the correct loader, normalization, feature ordering, and gate or warmup
 behavior. The standalone conditioner does not convert an existing checkpoint.
@@ -89,10 +101,12 @@ behavior. The standalone conditioner does not convert an existing checkpoint.
 ## Documentation
 
 - [Experiments](EXPERIMENTS.md): simulation workflows, analyses, and protocol controls.
+- [Gated migration](GATED_MIGRATION.md): shared algorithm, version selection, and retraining scope.
 - [Reproducibility](REPRODUCIBILITY.md): shared run metadata and stronger-backbone recipes.
 - [Real demonstration](REAL_DEMO.md): train and deploy the same LeRobot policy on your robot.
 - [Validation](validation/README.md): CPU checks and portable checkpoint inventory.
 - [Simulator checks](validation/SMOKE_REPORT.md): completed G1 and LIBERO execution checks.
+- [Learned-gate checks](validation/GATED_REPORT.md): optimizer, checkpoint, and short training validation.
 - [Results](RESULTS.md): archived stronger-backbone measurements and their scope.
 - [Contributing](CONTRIBUTING.md): code conventions and checks.
 

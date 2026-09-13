@@ -26,6 +26,41 @@ def class_constants(path: Path, *names: str) -> dict:
 
 
 class ActorContractTest(unittest.TestCase):
+    def test_all_new_training_defaults_select_learned_gates(self) -> None:
+        registry = json.loads((ROOT / "configs/actor_contracts.json").read_text())
+        self.assertEqual(set(registry["default_variants"]), {"g1", "diffusion", "smolvla", "bfm"})
+        self.assertEqual(registry["shared_interaction"]["gate_init"], 0.01)
+        self.assertEqual(registry["shared_interaction"]["scheduled_warmup_updates"], 0)
+        for name in registry["default_variants"].values():
+            with self.subTest(variant=name):
+                self.assertIn("gated", name)
+                self.assertEqual(CONTRACTS[name]["degree"], 2)
+
+    def test_g1_gated_contract_matches_new_recipe(self) -> None:
+        contract = CONTRACTS["g1_gated_poly_v2"]
+        source = ROOT / "integrations/humanoid-gym/config.py"
+        gated = class_constants(source, "G1HumanoidGymCfgPPOGated", "policy")
+        larger = class_constants(source, "G1HumanoidGymCfgPPOLarger", "policy")
+        self.assertEqual(gated["actor_variant"], "g1_gated_poly_v2")
+        self.assertEqual(gated["poly_degree"], contract["degree"])
+        self.assertEqual(gated["poly_hidden_dim"], contract["representation_dim"])
+        self.assertEqual(gated["gate_init"], contract["gate_init"])
+        self.assertEqual(larger["actor_hidden_dims"], contract["larger_actor_hidden_dims"])
+        self.assertNotIn("actor_poly_warmup_updates", gated)
+
+    def test_new_diffusion_training_recipe_is_explicitly_gated(self) -> None:
+        contract = CONTRACTS["diffusion_gated_state_v2"]
+        config = json.loads(
+            (ROOT / "integrations/lerobot/recipes/gated_prism_task0_train_config.json").read_text()
+        )["policy"]
+        self.assertEqual(config["poly_kernel_lift_mode"], contract["lift_mode"])
+        self.assertEqual(config["poly_kernel_source"], "state")
+        self.assertTrue(config["use_poly_kernel_conditioning"])
+        self.assertEqual(config["poly_kernel_latent_dim"], contract["latent_dim"])
+        self.assertEqual(config["poly_kernel_hidden_dim"], contract["hidden_dim"])
+        self.assertEqual(config["poly_kernel_gate_scale_init"], contract["gate_init"])
+        self.assertEqual(config["n_obs_steps"], contract["observation_steps"])
+
     def test_g1_contract_matches_task_dimensions_and_warmup_variants(self) -> None:
         contract = CONTRACTS["g1_residual_poly_v1"]
         source = ROOT / "integrations/humanoid-gym/config.py"

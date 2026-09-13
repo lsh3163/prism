@@ -7,9 +7,10 @@ hardware validation is claimed.
 ## 1. Choose the policy and its exact representation
 
 Start with the Diffusion integration in [integrations/lerobot](integrations/lerobot/README.md)
-to reuse the `diffusion_factorized_state_v1` actor.
-Its state history passes through input LayerNorm, two affine factors and their
-elementwise product, then latent LayerNorm and a SiLU MLP. Images retain the
+to use the `diffusion_gated_state_v2` actor.
+Its state history passes through input LayerNorm, two affine factors combined as
+`left * (1 + alpha * right)`, then latent LayerNorm and a SiLU MLP. Each feature's
+`alpha` starts at 0.01 and learns with the policy. Images retain the
 existing visual encoder and actions retain the Diffusion Policy decoder.
 
 For a SmolVLA demonstration, use the combined LeRobot integration's
@@ -58,7 +59,8 @@ uv run lerobot-train \
   --policy.push_to_hub=false \
   --policy.use_poly_kernel_conditioning=true \
   --policy.poly_kernel_source=state \
-  --policy.poly_kernel_lift_mode=latent_quadratic \
+  --policy.poly_kernel_lift_mode=gated_quadratic \
+  --policy.poly_kernel_gate_scale_init=0.01 \
   --policy.poly_kernel_latent_dim=256 \
   --policy.poly_kernel_hidden_dim=256 \
   --policy.n_obs_steps=2 \

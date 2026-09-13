@@ -1,5 +1,11 @@
 # Simulator execution checks
 
+The trained-checkpoint results below cover `g1_residual_poly_v1` and
+`diffusion_factorized_state_v1`. They predate the learned-gate defaults and
+do not establish performance of `g1_gated_poly_v2` or `diffusion_gated_state_v2`.
+See [the migration guide](../GATED_MIGRATION.md) for the new training scope.
+The [learned-gate report](GATED_REPORT.md) records the new bounded training checks.
+
 The extracted G1 actor/environment and patched LeRobot Diffusion integration
 ran with trained checkpoints on September 13, 2026. These checks establish
 bounded execution and metrics export. No training, full benchmark reproduction,

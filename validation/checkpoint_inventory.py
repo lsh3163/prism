@@ -140,13 +140,17 @@ class Inventory:
                 identity_status = (
                     "nominal Diffusion; historical feature ordering requires source verification"
                 )
-            elif (
-                policy.get("poly_kernel_source") == "state"
-                and policy.get("poly_kernel_lift_mode") == "latent_quadratic"
-            ):
-                identity = "diffusion_factorized_state_v1"
+            elif policy.get("poly_kernel_source") == "state" and policy.get("poly_kernel_lift_mode") in {
+                "latent_quadratic",
+                "gated_quadratic",
+            }:
+                identity = (
+                    "diffusion_gated_state_v2"
+                    if policy["poly_kernel_lift_mode"] == "gated_quadratic"
+                    else "diffusion_factorized_state_v1"
+                )
                 identity_status = (
-                    "saved config selects main representation; historical source revision unknown"
+                    "saved config selects representation; verify weight schema and source separately"
                 )
         elif policy_kind == "smolvla":
             if (
@@ -207,7 +211,7 @@ class Inventory:
     def inspect_g1(self, path: Path) -> dict:
         import torch
 
-        payload = torch.load(path, map_location="cpu", weights_only=True, mmap=True)
+        payload = torch.load(str(path), map_location="cpu", weights_only=True, mmap=True)
         weights = payload["model_state_dict"]
         buffers = {
             key: weights[key].item()
@@ -217,7 +221,13 @@ class Inventory:
         has_residual = (
             "actor_encoder.raw_proj.weight" in weights and "actor_encoder.poly_in_proj.weight" in weights
         )
+        has_gated = (
+            "actor_variant_version" in weights
+            and weights["actor_variant_version"].item() == 2
+            and "actor_encoder.factors.0.weight" in weights
+        )
         degree = sum(bool(re.fullmatch(r"actor_encoder\.A\.\d+\.weight", key)) for key in weights)
+        gated_degree = sum(bool(re.fullmatch(r"actor_encoder\.factors\.\d+\.weight", key)) for key in weights)
         shapes = {key: list(value.shape) for key, value in weights.items()}
         infos = payload.get("infos")
         seed = (
@@ -235,16 +245,26 @@ class Inventory:
             "checkpoint_iteration": payload.get("iter"),
             "checkpoint_top_level_keys": list(payload),
             "actor": {
-                "variant_id": "g1_residual_poly_v1" if has_residual else None,
-                "status": "compatible residual encoder schema; activations and source must be established separately"
-                if has_residual
-                else "MLP tensor schema",
+                "variant_id": "g1_gated_poly_v2"
+                if has_gated
+                else ("g1_residual_poly_v1" if has_residual else None),
+                "status": "gated encoder schema; activations and source must be established separately"
+                if has_gated
+                else (
+                    "compatible residual encoder schema; activations and source must be established separately"
+                    if has_residual
+                    else "MLP tensor schema"
+                ),
                 "degree_from_A_matrices": degree if has_residual else None,
+                "degree_from_gated_factors": gated_degree if has_gated else None,
+                "gate_shape": shapes.get("actor_encoder.interaction_scales"),
                 "checkpoint_buffers": buffers,
                 "normalization_parameter_keys": [key for key in weights if "layer_norm" in key],
                 "schema_shapes": shapes,
-                "warmup_schedule_updates": None,
-                "warmup_note": "saved current step/scale do not determine the original configured ramp duration",
+                "warmup_schedule_updates": 0 if has_gated else None,
+                "warmup_note": "gated v2 has no scalar warmup"
+                if has_gated
+                else "saved current step/scale do not determine the original configured ramp duration",
             },
             "unknown": [
                 "independently recorded training seed",

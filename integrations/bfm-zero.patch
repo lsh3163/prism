@@ -2,7 +2,7 @@ diff --git a/humanoidverse/agents/nn_filters.py b/humanoidverse/agents/nn_filter
 index 86b0b48..5d0bd07 100755
 --- a/humanoidverse/agents/nn_filters.py
 +++ b/humanoidverse/agents/nn_filters.py
-@@ -44,6 +44,26 @@ class DictInputFilterConfig(BaseConfig):
+@@ -44,6 +44,27 @@ class DictInputFilterConfig(BaseConfig):
              return DictInputConcatFilter(space, self)
  
  
@@ -17,6 +17,7 @@ index 86b0b48..5d0bd07 100755
 +    hidden_dim: int | None = None
 +    output_dim: int | None = None
 +    num_layers: int = 2
++    # Saved configs missing these fields retain the legacy representation.
 +    use_rmsnorm: bool = False
 +    rmsnorm_eps: float = 1e-6
 +    product_mode: str = "vanilla"
@@ -29,7 +30,7 @@ index 86b0b48..5d0bd07 100755
  class DictInputFilter(nn.Module):
      """
      Simple input filter that extracts a specific key from a dictionary input space.
-@@ -108,10 +128,121 @@ class DictInputConcatFilter(nn.Module):
+@@ -108,10 +129,138 @@ class DictInputConcatFilter(nn.Module):
          return _input
  
  
@@ -123,6 +124,23 @@ index 86b0b48..5d0bd07 100755
 +                highs.append(space.high)
 +        return gymnasium.spaces.Box(low=np.concatenate(lows), high=np.concatenate(highs), dtype=first_dtype)
 +
++    def _load_from_state_dict(
++        self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
++    ):
++        # Parent policy loaders may use strict=False. Never infer or discard a
++        # learned gate when the saved config and checkpoint disagree.
++        gate_key = prefix + "quadratic_scale"
++        expects_gate = self.quadratic_scale is not None
++        if (gate_key in state_dict) != expects_gate:
++            requirement = "requires" if expects_gate else "does not accept"
++            error_msgs.append(
++                f"PRISM product_mode={self.product_mode!r} {requirement} checkpoint key {gate_key!r}; "
++                "load the checkpoint with its original representation configuration."
++            )
++        super()._load_from_state_dict(
++            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
++        )
++
 +    def forward(self, _input: torch.Tensor | dict[str, torch.Tensor]):
 +        if not isinstance(_input, dict):
 +            return _input
@@ -176,7 +194,7 @@ index fc7a07c..69e8de3 100755
  
  import json
  import time
-@@ -185,6 +193,234 @@ def init_wandb(cfg: TrainConfig):
+@@ -185,6 +193,236 @@ def init_wandb(cfg: TrainConfig):
      wandb.init(entity=cfg.wandb_ename, project=cfg.wandb_pname, group=cfg.wandb_gname, name=wandb_name, config=wandb_config, dir="./_wandb")
  
  
@@ -344,9 +362,11 @@ index fc7a07c..69e8de3 100755
 +        history_hidden_dim = _read_env_optional_int("BFM_HISTORY_CONDITIONER_HIDDEN_DIM")
 +        history_output_dim = _read_env_optional_int("BFM_HISTORY_CONDITIONER_OUTPUT_DIM")
 +        history_num_layers = _read_env_int("BFM_HISTORY_CONDITIONER_NUM_LAYERS", 2)
-+        history_use_rmsnorm = _read_env_bool("BFM_HISTORY_CONDITIONER_USE_RMSNORM", False)
++        # This path constructs new training runs; serialized config defaults
++        # remain legacy-compatible in HistoryActorPRISMFilterConfig.
++        history_use_rmsnorm = _read_env_bool("BFM_HISTORY_CONDITIONER_USE_RMSNORM", True)
 +        history_rmsnorm_eps = float(os.getenv("BFM_HISTORY_CONDITIONER_RMSNORM_EPS", "1e-6"))
-+        history_product_mode = os.getenv("BFM_HISTORY_CONDITIONER_PRODUCT_MODE", "vanilla").strip().lower()
++        history_product_mode = os.getenv("BFM_HISTORY_CONDITIONER_PRODUCT_MODE", "gated_quadratic").strip().lower()
 +        history_gate_scale_init = float(os.getenv("BFM_HISTORY_CONDITIONER_GATE_SCALE_INIT", "1e-2"))
 +
 +        def maybe_prism_filter(input_filter):
@@ -411,7 +431,7 @@ index fc7a07c..69e8de3 100755
  class Workspace:
      def __init__(self, cfg: TrainConfig) -> None:
          self.cfg = cfg
-@@ -717,6 +953,7 @@ def train_bfm_zero():
+@@ -717,6 +955,7 @@ def train_bfm_zero():
          eval_every_steps=9600000,
          tags={},
      )

@@ -86,13 +86,16 @@ uv run python analysis/paper/ablate_locomotion_factors.py \
   --output /path/to/results/factor_ablation.json
 ```
 
-This utility imports the canonical degree-2 Humanoid-Gym actor, strictly loads
-its checkpoint, and zeroes one channel of the second affine factor. The raw
-branch, first polynomial term, learned parameters, and other factors are kept
-intact. Both the historical mean action-vector L2 distance and coordinate-wise
+This utility detects the versioned gated or historical residual degree-2 G1
+checkpoint and loads it strictly. For the gated actor it temporarily sets one
+learned alpha to zero, preserving the first-order term and restoring the gate
+after measurement. For the historical actor it zeroes one channel of the second
+affine factor while retaining the raw branch and first polynomial term.
+Both the historical mean action-vector L2 distance and coordinate-wise
 MAE are reported after the 0.25-radian joint-target scale. These metrics differ.
-The four default factor IDs belong to the historical seed-2 checkpoint; they
-are not universal important factors for independently trained models.
+The four example factor IDs belong to the historical seed-2 checkpoint; provide
+explicit IDs for each new checkpoint. They are not universal important factors
+for independently trained models. Gated output also records the saved alpha.
 
 Input names are descriptive interpretations of weights. The historical naming
 helper excluded the left coordinate when choosing the right coordinate. The

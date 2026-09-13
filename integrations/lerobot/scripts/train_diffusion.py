@@ -1,4 +1,4 @@
-"""Print or execute the recorded per-task LIBERO Diffusion training recipes."""
+"""Train gated Diffusion PRISM, matched controls, or explicit historical recipes."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from pathlib import Path
 
 from common import (
     ACTOR_IDS,
+    DIFFUSION_LEGACY_ACTOR_ID,
     INTEGRATION_ROOT,
     SUITES,
     Run,
@@ -21,10 +22,13 @@ from common import (
 
 
 def build_command(args: argparse.Namespace, task: dict) -> tuple[list[str], Path]:
-    profile = "historical-baseline" if args.profile == "matched-baseline" else args.profile
+    profile = "legacy-prism" if args.profile in {"prism", "legacy-prism"} else "historical-baseline"
     settings = task["profiles"][profile]
-    batch_size = 64 if args.profile == "matched-baseline" else settings["batch_size"]
-    workers = 8 if args.profile == "matched-baseline" else settings["num_workers"]
+    matched = args.profile in {"baseline", "matched-baseline"}
+    batch_size = 64 if matched else settings["batch_size"]
+    workers = 8 if matched else settings["num_workers"]
+    gated = args.profile in {"prism", "baseline", "matched-baseline"}
+    enabled = args.profile in {"prism", "legacy-prism"}
     output = args.output_root / args.profile / task["suite"] / f"task_{task['task_id']}"
     command = [
         *command_prefix(args, "train"),
@@ -44,11 +48,12 @@ def build_command(args: argparse.Namespace, task: dict) -> tuple[list[str], Path
         "--policy.optimizer_lr=0.0001",
         "--policy.compile_model=false",
         "--policy.use_amp=true",
-        f"--policy.use_poly_kernel_conditioning={str(args.profile == 'prism').lower()}",
+        f"--policy.use_poly_kernel_conditioning={str(enabled).lower()}",
         "--policy.poly_kernel_source=state",
-        "--policy.poly_kernel_lift_mode=latent_quadratic",
+        f"--policy.poly_kernel_lift_mode={'gated_quadratic' if gated else 'latent_quadratic'}",
         "--policy.poly_kernel_latent_dim=256",
         "--policy.poly_kernel_hidden_dim=256",
+        "--policy.poly_kernel_gate_scale_init=0.01",
         "--dataset.repo_id=HuggingFaceVLA/libero",
         f"--dataset.episodes={json.dumps(task['episodes'], separators=(',', ':'))}",
         "--env.type=libero",
@@ -75,7 +80,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     add_execution_args(parser)
     parser.add_argument(
-        "--profile", choices=("prism", "historical-baseline", "matched-baseline"), default="prism"
+        "--profile",
+        choices=(
+            "prism",
+            "baseline",
+            "legacy-prism",
+            "legacy-baseline",
+            "historical-baseline",
+            "matched-baseline",
+        ),
+        default="prism",
+        help="Default: gated PRISM. baseline is its matched control; legacy profiles preserve archived recipes",
     )
     parser.add_argument("--suites", type=csv_values, default=",".join(SUITES))
     parser.add_argument("--task-ids", type=csv_values, default="0,1,2,3,4,5,6,7,8,9")
@@ -100,8 +115,20 @@ def main() -> None:
                     {
                         "policy": "diffusion",
                         "profile": args.profile,
-                        "actor_variant": ACTOR_IDS["diffusion"] if args.profile == "prism" else None,
-                        "architecture": "factorized_state" if args.profile == "prism" else "nominal",
+                        "actor_variant": (
+                            ACTOR_IDS["diffusion"]
+                            if args.profile == "prism"
+                            else DIFFUSION_LEGACY_ACTOR_ID
+                            if args.profile == "legacy-prism"
+                            else None
+                        ),
+                        "architecture": (
+                            "gated_state"
+                            if args.profile == "prism"
+                            else "factorized_state"
+                            if args.profile == "legacy-prism"
+                            else "nominal"
+                        ),
                         "suite": task["suite"],
                         "task_id": task["task_id"],
                         "seed": args.seed,

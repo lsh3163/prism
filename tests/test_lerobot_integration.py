@@ -76,7 +76,7 @@ class DiffusionActorTest(unittest.TestCase):
         self.assertIsNotNone(model.right_proj.weight.grad)
 
     def test_history_shape_and_gradients(self):
-        for mode in ("raw", "latent_quadratic"):
+        for mode in ("raw", "latent_quadratic", "gated_quadratic"):
             model = Conditioner(16, 16, mode, 32, 64)
             inputs = torch.randn(4, 16, requires_grad=True)
             outputs = model(inputs)
@@ -89,6 +89,58 @@ class DiffusionActorTest(unittest.TestCase):
         for mode in ("prism_gated", "prism_factorized", "explicit_monomials"):
             with self.assertRaises(ValueError):
                 Conditioner(16, 16, mode, 32, 64)
+
+    def test_gated_alpha_is_per_feature_and_learns_then_roundtrips(self):
+        torch.manual_seed(7)
+        model = Conditioner(16, 16, "gated_quadratic", 256, 256)
+        gate = model.quadratic_scale
+        self.assertEqual(gate.shape, (256,))
+        self.assertIsInstance(gate, nn.Parameter)
+        self.assertTrue(gate.requires_grad)
+        torch.testing.assert_close(gate, torch.full_like(gate, 0.01), rtol=0, atol=0)
+        torch.testing.assert_close(
+            model.right_proj.bias, torch.zeros_like(model.right_proj.bias), rtol=0, atol=0
+        )
+        inputs, target = torch.randn(4, 16), torch.randn(4, 16)
+        loss = nn.functional.mse_loss(model(inputs), target)
+        loss.backward()
+        self.assertTrue(torch.isfinite(gate.grad).all())
+        self.assertGreater(gate.grad.abs().sum().item(), 0)
+        before = gate.detach().clone()
+        torch.optim.Adam(model.parameters(), lr=1e-3).step()
+        self.assertFalse(torch.equal(gate, before))
+        stream = io.BytesIO()
+        torch.save(model.state_dict(), stream)
+        stream.seek(0)
+        restored = Conditioner(16, 16, "gated_quadratic", 256, 256)
+        restored.load_state_dict(torch.load(stream, weights_only=True), strict=True)
+        torch.testing.assert_close(restored.quadratic_scale, gate, rtol=0, atol=0)
+        torch.testing.assert_close(restored(inputs), model(inputs), rtol=0, atol=0)
+
+    def test_gate_changes_interaction_and_zero_preserves_first_order_path(self):
+        model = Conditioner(2, 2, "gated_quadratic", 2, 4)
+        model.input_norm = nn.Identity()
+        model.net = nn.Identity()
+        inputs = torch.tensor([[2.0, 4.0], [-3.0, 1.0]])
+        with torch.no_grad():
+            model.quadratic_scale.zero_()
+            first_order = model.left_proj(inputs)
+            torch.testing.assert_close(model(inputs), first_order, rtol=0, atol=0)
+            model.quadratic_scale.copy_(torch.tensor([0.2, -0.3]))
+            expected = first_order * (1 + model.quadratic_scale * model.right_proj(inputs))
+            torch.testing.assert_close(model(inputs), expected, rtol=0, atol=0)
+            self.assertFalse(torch.equal(model(inputs), first_order))
+
+    def test_legacy_and_gated_checkpoints_cannot_load_across_modes_even_non_strict(self):
+        legacy = Conditioner(16, 16, "latent_quadratic", 256, 256)
+        gated = Conditioner(16, 16, "gated_quadratic", 256, 256)
+        self.assertNotIn("quadratic_scale", legacy.state_dict())
+        self.assertIn("quadratic_scale", gated.state_dict())
+        for strict in (True, False):
+            with self.assertRaisesRegex(RuntimeError, "gate schema"):
+                gated.load_state_dict(legacy.state_dict(), strict=strict)
+            with self.assertRaisesRegex(RuntimeError, "gate schema"):
+                legacy.load_state_dict(gated.state_dict(), strict=strict)
 
 
 class LiberoEpisodeTerminationTest(unittest.TestCase):
@@ -129,7 +181,7 @@ class SimulationRecipeTest(unittest.TestCase):
             self.assertGreater(len(task["episodes"]), 0)
             self.assertEqual(len(task["episodes"]), len(set(task["episodes"])))
             self.assertEqual(task["profiles"]["historical-baseline"]["batch_size"], 8)
-            self.assertEqual(task["profiles"]["prism"]["batch_size"], 64)
+            self.assertEqual(task["profiles"]["legacy-prism"]["batch_size"], 64)
 
     def test_matched_control_changes_only_actor_and_output(self):
         task = json.loads((INTEGRATION / "recipes/diffusion_tasks.json").read_text())["tasks"][0]
@@ -143,6 +195,67 @@ class SimulationRecipeTest(unittest.TestCase):
         self.assertEqual(len(differences), 2)
         self.assertTrue(differences[0][0].startswith("--policy.use_poly_kernel_conditioning="))
         self.assertTrue(differences[1][0].startswith("--output_dir="))
+
+    def test_default_gated_and_explicit_legacy_recipes_are_distinct(self):
+        task = json.loads((INTEGRATION / "recipes/diffusion_tasks.json").read_text())["tasks"][0]
+        args = argparse.Namespace(
+            profile="prism", output_root=Path("runs"), steps=20000, seed=0, dataset_revision=None
+        )
+        gated, _ = self.train.build_command(args, task)
+        self.assertIn("--policy.poly_kernel_lift_mode=gated_quadratic", gated)
+        self.assertIn("--policy.poly_kernel_gate_scale_init=0.01", gated)
+        args.profile = "legacy-prism"
+        legacy, _ = self.train.build_command(args, task)
+        self.assertIn("--policy.poly_kernel_lift_mode=latent_quadratic", legacy)
+        self.assertIn("--policy.use_poly_kernel_conditioning=true", legacy)
+        args.profile = "baseline"
+        baseline, _ = self.train.build_command(args, task)
+        self.assertIn("--batch_size=64", baseline)
+        self.assertIn("--policy.use_poly_kernel_conditioning=false", baseline)
+        args.profile = "legacy-baseline"
+        baseline, _ = self.train.build_command(args, task)
+        self.assertIn("--batch_size=8", baseline)
+
+    def test_diffusion_checkpoint_ids_follow_saved_mode_and_eval_never_overrides_it(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "model.safetensors").write_bytes(b"fixture")
+            config = {
+                "type": "diffusion",
+                "use_poly_kernel_conditioning": True,
+                "poly_kernel_source": "state",
+                "poly_kernel_latent_dim": 256,
+                "poly_kernel_hidden_dim": 256,
+            }
+            for mode, expected_id in (
+                ("latent_quadratic", "diffusion_factorized_state_v1"),
+                ("gated_quadratic", "diffusion_gated_state_v2"),
+            ):
+                (root / "config.json").write_text(json.dumps({**config, "poly_kernel_lift_mode": mode}))
+                self.assertEqual(
+                    self.common.checkpoint_metadata(root, "diffusion", "prism")["actor_variant"], expected_id
+                )
+            (root / "config.json").write_text(json.dumps(config))
+            self.assertEqual(
+                self.common.checkpoint_metadata(root, "diffusion", "prism")["actor_variant"],
+                "diffusion_factorized_state_v1",
+            )
+        args = self.evaluate.make_parser().parse_args(
+            [
+                "--lerobot-root",
+                "/tmp/lerobot",
+                "--suite",
+                "libero_spatial",
+                "--task-id",
+                "0",
+                "--prism",
+                "/tmp/checkpoint",
+                "--output-root",
+                "/tmp/eval",
+            ]
+        )
+        command, _, _ = self.evaluate.build_command(args, "prism")
+        self.assertFalse(any(item.startswith("--policy.poly_kernel_") for item in command))
 
     def test_oracle_uses_contact_without_sensorless_noise_or_delay(self):
         args = self.evaluate.make_parser().parse_args(

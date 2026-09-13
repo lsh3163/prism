@@ -78,16 +78,36 @@ def write_training_manifest(log_dir, payload):
 
 def training_manifest(variant, task, command, args, env_config, train_config, runner, modules):
     policy = train_config["policy"]
-    is_polynomial = bool(policy.get("actor_use_poly", False))
+    policy_class = train_config["runner"]["policy_class_name"]
+    is_gated = policy_class == "GatedPolyActorCritic"
+    is_polynomial = is_gated or policy_class == "PolyActorCritic"
     actor_identity = {
-        "actor_variant": "g1_residual_poly_v1" if is_polynomial else None,
-        "policy_type": "residual_polynomial" if is_polynomial else "mlp",
+        "actor_variant": "g1_gated_poly_v2"
+        if is_gated
+        else ("g1_residual_poly_v1" if is_polynomial else None),
+        "policy_type": "gated_polynomial"
+        if is_gated
+        else ("residual_polynomial" if is_polynomial else "mlp"),
         "recipe_variant": variant,
-        "class": train_config["runner"]["policy_class_name"],
+        "class": policy_class,
         "actor_hidden_dims": policy["actor_hidden_dims"],
         "polynomial_degree": policy.get("poly_degree") if is_polynomial else None,
         "warmup_ppo_updates": policy.get("actor_poly_warmup_updates", 0) if is_polynomial else None,
+        "gate_semantics": "learned_per_feature"
+        if is_gated
+        else ("legacy_scalar_scale" if is_polynomial else None),
+        "gate_init": policy.get("gate_init", 0.01) if is_gated else None,
     }
+    model = getattr(getattr(runner, "alg", None), "actor_critic", None)
+    if model is not None:
+        actor_identity["actor_mean_parameters"] = sum(
+            parameter.numel()
+            for name, parameter in model.named_parameters()
+            if name.startswith(("actor_encoder.", "actor."))
+        )
+        actor_identity["total_actor_critic_parameters"] = sum(
+            parameter.numel() for parameter in model.parameters()
+        )
     versions = {"python": platform.python_version(), "executable": sys.executable}
     for name in ("torch", "numpy", "isaacgym", "rsl_rl"):
         module = modules.get(name)
@@ -112,5 +132,5 @@ def training_manifest(variant, task, command, args, env_config, train_config, ru
         "initial_learning_iteration": runner.current_learning_iteration,
         "runtime": versions,
         "source": source_snapshot(Path(__file__).parent, modules),
-        "note": "Created before learn(); it records inputs and provenance, not training completion or paper performance. Checkpoint schema and PPO computation are unchanged.",
+        "note": "Created before learn(); it records inputs and provenance, not training completion or paper performance. Metadata does not mutate model state; actor schema is recorded explicitly.",
     }

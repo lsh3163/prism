@@ -6,13 +6,13 @@ import shlex
 import subprocess
 import sys
 
-from runtime import VARIANTS
+from runtime import DEFAULT_VARIANTS, VARIANTS
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--seeds", nargs="+", type=int, required=True)
-    parser.add_argument("--variants", nargs="+", choices=VARIANTS, default=list(VARIANTS))
+    parser.add_argument("--variants", nargs="+", choices=VARIANTS, default=list(DEFAULT_VARIANTS))
     parser.add_argument("--max-iterations", type=int, default=3001)
     parser.add_argument("--num-envs", type=int, default=4096)
     parser.add_argument("--prefix", default="prism_g1")

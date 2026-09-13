@@ -1,20 +1,22 @@
 # Backbone Integrations
 
-The simulation code includes the original G1 and Diffusion experiments and the
-stronger-backbone patches. Read [../ACTOR_CONTRACT.md](../ACTOR_CONTRACT.md) before
+The default simulation recipes use learned per-feature gated interactions across
+G1, Diffusion, SmolVLA, and BFM-Zero. The original G1 and Diffusion computations
+remain available through legacy recipes. Read [../ACTOR_CONTRACT.md](../ACTOR_CONTRACT.md) before
 substituting representations or loading historical checkpoints.
 
 | Integration | Main source and instructions |
 |---|---|
-| Humanoid-Gym-style Unitree G1 | [humanoid-gym/README.md](humanoid-gym/README.md): residual actor, task/environment source, PPO warmup, train/eval and probes; separate legacy environment |
+| Humanoid-Gym-style Unitree G1 | [humanoid-gym/README.md](humanoid-gym/README.md): gated actor, historical residual actor, task/environment source, train/eval and probes; separate Python 3.8 simulator environment |
 | LeRobot Diffusion and SmolVLA | [lerobot/README.md](lerobot/README.md): pinned extraction, task recipes, historical checkpoints, simulation metrics and robustness |
 | BFM-Zero | Existing patches and evaluator below; representation analysis in [../analysis/README.md](../analysis/README.md) |
 | Paper analysis | [../analysis/paper/README.md](../analysis/paper/README.md): contact probes, factor ablation, and metric aggregation |
 | New real robot demonstration | [../REAL_DEMO.md](../REAL_DEMO.md): record, train, and deploy the same representation |
 
-The patches in this directory reproduce the exact source-level integration
-used in the stronger-backbone experiments. Apply each patch only to its pinned
-upstream commit.
+The stronger-backbone patches preserve their released gated computations and
+add checkpoint schema checks. Apply each patch only to its pinned upstream commit.
+Use the named training recipes to select the current gated actor explicitly;
+missing fields in historical saved configurations retain legacy interpretation.
 
 ## BFM-Zero
 

@@ -77,6 +77,8 @@ def build_run(args: argparse.Namespace) -> Run:
             "architecture": {"baseline": "linear", "larger": "mlp", "prism": "prism"}.get(args.profile),
             "action": args.action,
             "seed": args.seed,
+            "product_mode": "gated_quadratic" if args.action == "train" and args.profile == "prism" else None,
+            "gate_scale_init": 0.01 if args.action == "train" and args.profile == "prism" else None,
         },
         {"MUJOCO_GL": "egl", "PYOPENGL_PLATFORM": "egl"},
         args.checkpoint,

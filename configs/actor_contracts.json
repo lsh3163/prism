@@ -1,6 +1,6 @@
 {
-  "schema_version": 1,
-  "decision": "Preserve existing computations and checkpoint schemas under stable actor variant IDs.",
+  "schema_version": 2,
+  "decision": "Use learned per-feature gated interactions for all default PRISM training recipes; preserve explicit historical actor schemas.",
   "scope": "Computation graphs, observation interfaces, and checkpoint compatibility for supported policy integrations.",
   "contracts": {
     "g1_residual_poly_v1": {
@@ -50,7 +50,8 @@
         "actor_encoder.poly_scale",
         "actor_poly_warmup_step"
       ],
-      "compatibility_note": "Main comparison and fixed degree-2 ablation use different warmup settings."
+      "compatibility_note": "Main comparison and fixed degree-2 ablation use different warmup settings.",
+      "status": "legacy; retained for historical checkpoints and explicit recipes"
     },
     "diffusion_factorized_state_v1": {
       "source": "integrations/lerobot/diffusion_conditioner.py",
@@ -78,7 +79,8 @@
         "net.0.weight",
         "net.1.weight",
         "net.3.weight"
-      ]
+      ],
+      "status": "legacy; retained for historical checkpoints and explicit recipes"
     },
     "smolvla_gated_quadratic_v1": {
       "source": "integrations/lerobot-smolvla.patch",
@@ -141,6 +143,103 @@
         "output_norm"
       ],
       "compatibility_note": "Reusable API; no claim that its normalization/projection or checkpoint layout matches the main Diffusion adapter."
+    },
+    "g1_gated_poly_v2": {
+      "status": "default for new G1 PRISM training; requires new checkpoints and results",
+      "source": "integrations/humanoid-gym/gated_actor.py",
+      "class": "GatedPolyActorCritic",
+      "representation_class": "GatedPolyEncoder",
+      "input_dim": 705,
+      "critic_input_dim": 219,
+      "output_dim": 12,
+      "representation_dim": 256,
+      "actor_hidden_dims": [
+        512,
+        256,
+        128
+      ],
+      "critic_hidden_dims": [
+        768,
+        256,
+        128
+      ],
+      "activation": "elu",
+      "critic_uses_polynomial": false,
+      "degree": 2,
+      "degree_ablations": [
+        1,
+        2,
+        3
+      ],
+      "gate_init": 0.01,
+      "warmup_ppo_updates": 0,
+      "gate_semantics": "Unconstrained trainable vector per added factor; one value per latent feature",
+      "projection": "Linear(256,256) followed by ELU; no historical raw residual skip",
+      "main_actor_mean_parameters": 724876,
+      "main_total_actor_critic_parameters": 1123737,
+      "larger_actor_hidden_dims": [
+        648,
+        328,
+        160
+      ],
+      "larger_actor_mean_parameters": 724932,
+      "checkpoint_keys": [
+        "actor_variant_version",
+        "actor_encoder.factors.0.weight",
+        "actor_encoder.factors.1.weight",
+        "actor_encoder.interaction_scales",
+        "actor_encoder.projection.weight"
+      ],
+      "compatibility_note": "Distinct computation and schema from g1_residual_poly_v1; no automatic weight conversion."
+    },
+    "diffusion_gated_state_v2": {
+      "source": "integrations/lerobot/diffusion_conditioner.py",
+      "class": "PolynomialKernelConditioner",
+      "input_dim": 16,
+      "output_dim": 16,
+      "observation_steps": 2,
+      "state_dim_per_step": 8,
+      "action_dim": 7,
+      "degree": 2,
+      "latent_dim": 256,
+      "hidden_dim": 256,
+      "activation": "silu",
+      "lift_mode": "gated_quadratic",
+      "input_layer_norm": true,
+      "latent_layer_norm": true,
+      "gate_semantics": "Learned per-latent-feature quadratic_scale, initialized to 0.01; right affine bias initialized to zero.",
+      "normalization_before_module": "Use the saved policy preprocessor; inspected main task0 configs specify MIN_MAX for state.",
+      "history_order": "Flatten state history, combined image-feature history, and optional environment-state history separately, then concatenate in that order. Camera features are concatenated within each timestep before image-history flattening.",
+      "checkpoint_prefix": "diffusion.poly_kernel_conditioner.",
+      "checkpoint_keys": [
+        "input_norm.weight",
+        "left_proj.weight",
+        "right_proj.weight",
+        "net.0.weight",
+        "net.1.weight",
+        "net.3.weight",
+        "quadratic_scale"
+      ],
+      "status": "default for new Diffusion PRISM training; requires new checkpoints and results",
+      "gate_init": 0.01,
+      "compatibility_note": "Gate parameter is required for gated mode and forbidden in legacy mode, including non-strict policy loads."
     }
+  },
+  "shared_interaction": {
+    "recurrence": "phi_1=A_1(x); phi_k=phi_(k-1)*(1+alpha_(k-1)*A_k(x))",
+    "input": "Backbone-selected state/history after its documented preprocessing",
+    "default_degree": 2,
+    "gate_init": 0.01,
+    "gate_parameterization": "Unconstrained trainable vector per added factor; one value per latent feature",
+    "later_factor_bias_init": 0.0,
+    "scheduled_warmup_updates": 0,
+    "optimization": "Backbone native loss; saved with policy and fixed during evaluation",
+    "scope": "Interaction recurrence; preprocessing, projections, activations, norms, and losses remain backbone-specific"
+  },
+  "default_variants": {
+    "g1": "g1_gated_poly_v2",
+    "diffusion": "diffusion_gated_state_v2",
+    "smolvla": "smolvla_gated_quadratic_v1",
+    "bfm": "bfm_history_gated_quadratic_v1"
   }
 }

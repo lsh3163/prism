@@ -318,3 +318,43 @@ class G1HumanoidGymCfgPPOPolyWarmup(G1HumanoidGymCfgPPOPoly):
     class runner(G1HumanoidGymCfgPPOPoly.runner):
         policy_class_name = "PolyActorCritic"
         experiment_name = "g1_humanoidgym_ppo_poly_warmup"
+
+
+class G1HumanoidGymCfgPPOLarger(G1HumanoidGymCfgPPO):
+    """MLP control within 0.01% of the new degree-two gated actor parameter count."""
+
+    class policy(G1HumanoidGymCfgPPO.policy):
+        actor_hidden_dims = [648, 328, 160]
+
+    class runner(G1HumanoidGymCfgPPO.runner):
+        experiment_name = "g1_humanoidgym_ppo_larger_v2"
+
+
+class G1HumanoidGymCfgPPOGated(G1HumanoidGymCfgPPO):
+    """New default PRISM: learned alpha vectors, without scale warmup."""
+
+    class policy(G1HumanoidGymCfgPPO.policy):
+        actor_variant = "g1_gated_poly_v2"
+        poly_hidden_dim = 256
+        poly_degree = 2
+        gate_init = 0.01
+
+    class runner(G1HumanoidGymCfgPPO.runner):
+        policy_class_name = "GatedPolyActorCritic"
+        experiment_name = "g1_humanoidgym_ppo_gated_d2"
+
+
+class G1HumanoidGymCfgPPOGatedD1(G1HumanoidGymCfgPPOGated):
+    class policy(G1HumanoidGymCfgPPOGated.policy):
+        poly_degree = 1
+
+    class runner(G1HumanoidGymCfgPPOGated.runner):
+        experiment_name = "g1_humanoidgym_ppo_gated_d1"
+
+
+class G1HumanoidGymCfgPPOGatedD3(G1HumanoidGymCfgPPOGated):
+    class policy(G1HumanoidGymCfgPPOGated.policy):
+        poly_degree = 3
+
+    class runner(G1HumanoidGymCfgPPOGated.runner):
+        experiment_name = "g1_humanoidgym_ppo_gated_d3"

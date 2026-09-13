@@ -1,3 +1,4 @@
+import io
 import unittest
 
 import torch
@@ -6,6 +7,52 @@ from prism_robot import PRISMConditioner, RMSNorm
 
 
 class PRISMConditionerTest(unittest.TestCase):
+    def test_default_gates_train_and_resume_with_optimizer_state(self) -> None:
+        torch.manual_seed(17)
+        model = PRISMConditioner(4, 3, hidden_dim=5, degree=3)
+        scales = model.interaction_scales
+        self.assertIsInstance(scales, torch.nn.Parameter)
+        torch.testing.assert_close(scales, torch.full((2, 5), 0.01))
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+        inputs, targets = torch.randn(8, 4), torch.randn(8, 3)
+
+        def update(network, optim):
+            optim.zero_grad()
+            torch.nn.functional.mse_loss(network(inputs), targets).backward()
+            gradient = network.interaction_scales.grad
+            self.assertTrue(torch.isfinite(gradient).all())
+            self.assertTrue((gradient.abs().sum(dim=1) > 0).all())
+            optim.step()
+
+        initial = scales.detach().clone()
+        update(model, optimizer)
+        self.assertFalse(torch.equal(initial, scales))
+        checkpoint = io.BytesIO()
+        torch.save({"model": model.state_dict(), "optimizer": optimizer.state_dict()}, checkpoint)
+        checkpoint.seek(0)
+        saved = torch.load(checkpoint, weights_only=True)
+        restored = PRISMConditioner(4, 3, hidden_dim=5, degree=3)
+        restored.load_state_dict(saved["model"], strict=True)
+        resumed_optimizer = torch.optim.Adam(restored.parameters(), lr=1e-3)
+        resumed_optimizer.load_state_dict(saved["optimizer"])
+        torch.testing.assert_close(restored(inputs), model(inputs), rtol=0, atol=0)
+        update(model, optimizer)
+        update(restored, resumed_optimizer)
+        for key, value in model.state_dict().items():
+            torch.testing.assert_close(value, restored.state_dict()[key], rtol=0, atol=0)
+
+    def test_gates_are_unconstrained_feature_scales(self) -> None:
+        model = PRISMConditioner(1, 2, hidden_dim=2, post_mlp_layers=1)
+        with torch.no_grad():
+            for factor in model.factors:
+                factor.weight.fill_(1)
+                factor.bias.zero_()
+            model.interaction_scales.copy_(torch.tensor([[-2.0, 3.0]]))
+        # At x=2, u=v=2 and u*(1+alpha*v) yields [-6, 14].
+        torch.testing.assert_close(
+            model.polynomial_features(torch.tensor([[2.0]])), torch.tensor([[-6.0, 14.0]])
+        )
+
     def test_output_shape_and_end_to_end_gradients(self) -> None:
         model = PRISMConditioner(
             input_dim=7,

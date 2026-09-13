@@ -186,7 +186,7 @@ class HumanoidTrainingProvenanceTest(unittest.TestCase):
             output = stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
             runpy.run_path(str(INTEGRATION / "train.py"), run_name="__main__")
         result = json.loads(output.getvalue())
-        self.assertEqual(result["task"], "g1_humanoidgym_ppo_poly_warmup")
+        self.assertEqual(result["task"], "g1_humanoidgym_ppo_gated_d2")
         self.assertEqual(result["arguments"], ["--seed=23"])
 
 

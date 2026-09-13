@@ -107,17 +107,23 @@ def normalize_saved_state(x: torch.Tensor, stats: dict, mode: str, eps: float) -
 
 
 def load_prism_weights(policy_dir: Path) -> dict[str, torch.Tensor]:
+    config = json.loads((policy_dir / "config.json").read_text())
+    lift_mode = config.get("poly_kernel_lift_mode", "latent_quadratic")
     if BASELINE_FEATURE_MODE == "state-first-contribution":
-        config = json.loads((policy_dir / "config.json").read_text())
         if (
             not config.get("use_poly_kernel_conditioning")
             or config.get("poly_kernel_source") != "state"
-            or config.get("poly_kernel_lift_mode") != "latent_quadratic"
+            or lift_mode not in {"latent_quadratic", "gated_quadratic"}
         ):
-            raise ValueError("PRISM features require the main state-source latent-quadratic conditioner")
+            raise ValueError(
+                "PRISM features require a state-source factorized or gated quadratic conditioner"
+            )
     sd = load_file(str(policy_dir / "model.safetensors"))
     prefix = "diffusion.poly_kernel_conditioner."
-    return {key.removeprefix(prefix): value.float() for key, value in sd.items() if key.startswith(prefix)}
+    weights = {key.removeprefix(prefix): value.float() for key, value in sd.items() if key.startswith(prefix)}
+    if ("quadratic_scale" in weights) != (lift_mode == "gated_quadratic"):
+        raise ValueError("Saved Diffusion gate tensor disagrees with the configured interaction mode")
+    return weights
 
 
 def prism_latents(x: torch.Tensor, weights: dict[str, torch.Tensor]) -> tuple[torch.Tensor, torch.Tensor]:
@@ -130,7 +136,7 @@ def prism_latents(x: torch.Tensor, weights: dict[str, torch.Tensor]) -> tuple[to
     left = torch.nn.functional.linear(x, weights["left_proj.weight"], weights["left_proj.bias"])
     right = torch.nn.functional.linear(x, weights["right_proj.weight"], weights["right_proj.bias"])
     linear = torch.cat([left, right], dim=-1)
-    poly = left * right
+    poly = left * (1 + weights["quadratic_scale"] * right) if "quadratic_scale" in weights else left * right
     return linear, poly
 
 
@@ -383,9 +389,9 @@ def write_table(results: dict[str, dict[str, tuple[float, float]]]) -> None:
             if BASELINE_FEATURE_MODE == "state-first-contribution"
             else r"Audit only: the historical baseline surrogate uses tail columns and SiLU-after-linear; it is not a certified baseline embedding."
         ),
-        rf"We use contact-conditioned windows from a cross-suite LIBERO diagnostic subset (Spatial, Object, Goal, and Long) with horizon $H={HORIZON}$ and train lightweight probes on frozen representations.",
-        r"Targets measure future force response, contact impulse, and mechanics-inspired motion response.",
-        r"MSE is computed after standardizing each target; Gain reports the relative MSE reduction of PRISM Poly. Latent over the PRISM Linear Latent, isolating the contribution of the polynomial interaction.",
+        rf"We use contact-conditioned windows from the explicitly selected LIBERO traces and checkpoints with horizon $H={HORIZON}$ and train lightweight probes on frozen representations.",
+        r"Force windows include the current timestep; motion targets describe displacement over the window.",
+        r"MSE is computed after standardizing each target; Gain reports the relative MSE reduction of PRISM Poly. Latent over PRISM Linear Latent. These representations have different feature dimensions; this comparison is a probe diagnostic, not a causal ablation.",
         r"}",
         r"\label{tab:contact_response_probe}",
         r"\resizebox{\textwidth}{!}{%",

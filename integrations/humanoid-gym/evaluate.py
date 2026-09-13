@@ -6,6 +6,7 @@
 import copy
 import json
 import os
+from pathlib import Path
 
 import isaacgym  # noqa: F401  # Required before torch imports.
 import numpy as np
@@ -13,16 +14,19 @@ import torch
 from isaacgym import gymutil
 
 from legged_gym import LEGGED_GYM_ROOT_DIR
-from runtime import register_tasks
+from checkpoints import actor_variant, validate_checkpoint
+from provenance import file_identity
+from runtime import VARIANTS, register_tasks
 
 task_registry = register_tasks()
 # Upstream env registration must precede importing utils to avoid its circular import.
-from legged_gym.utils import get_load_path  # noqa: E402
+from legged_gym.utils import class_to_dict, get_load_path  # noqa: E402
 
 
 def get_eval_args():
     custom_parameters = [
-        {"name": "--task", "type": str, "default": "g1_humanoidgym_ppo"},
+        {"name": "--task", "type": str, "default": None},
+        {"name": "--variant", "type": str, "default": None},
         {"name": "--model_path", "type": str, "default": None},
         {"name": "--experiment_name", "type": str, "default": None},
         {"name": "--variant_name", "type": str, "default": None},
@@ -53,6 +57,17 @@ def get_eval_args():
     args.max_iterations = None
     args.resume = False
     args.run_name = None
+    if args.variant is not None and args.variant not in VARIANTS:
+        raise ValueError("Unknown recipe --variant=" + args.variant)
+    if args.task is None:
+        args.variant = args.variant or "prism"
+        args.task = VARIANTS[args.variant][0]
+    elif args.task not in {item[0] for item in VARIANTS.values()}:
+        raise ValueError("Unknown released G1 task: " + args.task)
+    elif args.variant is not None and VARIANTS[args.variant][0] != args.task:
+        raise ValueError("--task and --variant select different G1 actor recipes")
+    elif args.variant is None:
+        args.variant = next(name for name, item in VARIANTS.items() if item[0] == args.task)
 
     return args
 
@@ -119,6 +134,8 @@ def resolve_checkpoint_path(
 
 
 def load_eval_bundle(args):
+    if args.save_path is not None and (Path(args.save_path).exists() or Path(args.save_path).is_symlink()):
+        raise FileExistsError("Choose a fresh evaluation --save_path: " + args.save_path)
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
     env_cfg = copy.deepcopy(env_cfg)
     train_cfg = copy.deepcopy(train_cfg)
@@ -138,6 +155,7 @@ def load_eval_bundle(args):
         load_run=args.load_run,
         checkpoint=args.checkpoint,
     )
+    validate_checkpoint(Path(checkpoint_path), class_to_dict(train_cfg))
 
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
     train_cfg.runner.resume = False
@@ -153,6 +171,8 @@ def load_eval_bundle(args):
         "env": env,
         "runner": runner,
         "policy": policy,
+        "actor_variant": actor_variant(train_cfg.runner.policy_class_name),
+        "checkpoint_sha256": file_identity(checkpoint_path)["sha256"],
     }
 
 
@@ -207,6 +227,8 @@ def evaluate_bundle(bundle, num_episodes):
     return {
         "task": bundle["task"],
         "checkpoint_path": bundle["checkpoint_path"],
+        "actor_variant": bundle.get("actor_variant"),
+        "checkpoint_sha256": bundle.get("checkpoint_sha256"),
         "num_episodes": len(episode_returns),
         "avg_return": float(np.mean(episode_returns)),
         "std_return": float(np.std(episode_returns)),
@@ -242,6 +264,8 @@ def maybe_save_results(args, result):
     payload = {
         "metadata": {
             "variant_name": args.variant_name,
+            "recipe_variant": getattr(args, "variant", None),
+            "actor_variant": result.get("actor_variant"),
             "condition_name": args.condition_name,
             "terrain_mode": args.terrain_mode,
             "push_mode": args.push_mode,
@@ -258,7 +282,7 @@ def maybe_save_results(args, result):
     save_dir = os.path.dirname(save_path)
     if save_dir:
         os.makedirs(save_dir, exist_ok=True)
-    with open(save_path, "w", encoding="utf-8") as handle:
+    with open(save_path, "x", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2)
     print(f"Saved evaluation results to: {save_path}")
 

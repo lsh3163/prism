@@ -77,6 +77,10 @@ class PRISMConditioner(nn.Module):
     The scales are learned independently for every latent feature. Initializing
     them near zero preserves a strong first-order path at the beginning of
     training while allowing higher-order interactions to emerge end-to-end.
+    They are unconstrained parameters, saved with the model and held fixed
+    during evaluation. The gated recurrence is shared by all default PRISM
+    integration recipes; preprocessing and output projections are specified by
+    each backbone's actor contract.
 
     ``factorized`` mode instead multiplies affine factors directly and is
     provided for the pure factorized-polynomial ablations.

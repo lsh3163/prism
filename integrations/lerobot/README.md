@@ -1,29 +1,41 @@
 # LeRobot simulation integration
 
-This release contains the main LIBERO Diffusion representation experiment,
-its nominal and MCC evaluations, the recorded robustness and MCC parameter
-sweeps, and the stronger-backbone SmolVLA integration. Hardware experiment
-source and results are excluded.
+New Diffusion PRISM training defaults to a learned per-feature gate. The
+release also preserves the original ungated Diffusion actor and recipes for
+historical checkpoints, nominal/MCC/robustness evaluations, and the gated
+SmolVLA integration. Hardware experiment source and results are excluded.
 
 ## Actor and checkpoint contracts
 
 | Experiment | Representation | Preserved checkpoint names |
 |---|---|---|
-| Main Diffusion PRISM | LayerNorm on state history; elementwise product of two affine latent factors; latent LayerNorm; SiLU MLP | `diffusion.poly_kernel_conditioner.input_norm`, `left_proj`, `right_proj`, `net` |
+| Default Diffusion PRISM (`diffusion_gated_state_v2`) | LayerNorm on state history; learned gated affine product; latent LayerNorm; SiLU MLP | `diffusion.poly_kernel_conditioner.input_norm`, `left_proj`, `right_proj`, `quadratic_scale`, `net` |
+| Legacy Diffusion PRISM (`diffusion_factorized_state_v1`) | LayerNorm on state history; ungated product of two affine factors; latent LayerNorm; SiLU MLP | `diffusion.poly_kernel_conditioner.input_norm`, `left_proj`, `right_proj`, `net` |
 | Stronger SmolVLA PRISM | Degree-two gated product; SiLU MLP; external RMSNorm | `model.state_proj.left_proj`, `right_proj`, `quadratic_scale`, `post_mlp`; `model.state_output_norm` |
 
-The main Diffusion recipe has two observations, eight state coordinates per
+Both Diffusion recipes have two observations, eight state coordinates per
 observation, 256 latent factors, and a 256-wide MLP. Its output replaces the
 16-dimensional state history before concatenation with RGB features. The
 diffusion objective, U-Net, and seven-dimensional action interface are retained.
-The historical `latent_quadratic` name means two affine factors multiplied
-elementwise. It does **not** mean enumerating every quadratic monomial.
+The new `gated_quadratic` mode computes `left * (1 + alpha * right)` between
+the two normalization stages. `alpha` is a 256-element `nn.Parameter`,
+initialized to 0.01 and updated by the ordinary diffusion loss. The new mode
+initializes the right affine bias to zero. It has no scheduled gate or
+detached update. Setting alpha to zero retains the first affine path.
 
-`diffusion_conditioner.py` preserves this actor's initialization, normalization,
-parameter layout, and forward computation. It is intentionally distinct from
+The legacy `latent_quadratic` mode keeps `left * right`, its original
+initialization, and its exact checkpoint keys. Neither mode enumerates every
+quadratic monomial. **Historical results belong to the legacy actor; the new
+gated default requires training and evaluation before any performance claim.**
+
+`diffusion_conditioner.py` preserves the legacy actor alongside the new gated
+mode. Both retain the Diffusion-specific normalization and projection around
+the product. They are distinct from
 the standalone gated `prism_robot.PRISMConditioner`. The SmolVLA patch retains
 its original module names and RMSNorm arithmetic. No checkpoint conversion is
-performed. See [../../ACTOR_CONTRACT.md](../../ACTOR_CONTRACT.md).
+performed. Missing or extra gate parameters cause a loading error, including
+when LeRobot requests `strict=False`. See
+[../../ACTOR_CONTRACT.md](../../ACTOR_CONTRACT.md).
 
 The Diffusion patch preserves the reviewed experiment's feature ordering:
 flatten each state/image/environment history separately, then concatenate
@@ -36,8 +48,8 @@ we cannot establish past run/source identity from checkpoint configs alone.
 Inactive `poly_compliance_*` dataclass fields are retained only to parse the
 saved main-experiment configs. `use_poly_compliance=true` is rejected. The
 abandoned action-residual implementation and real-robot chunk blending are not
-part of this release. New core modes such as `prism_gated` are also rejected
-by this historical adapter rather than silently changing an existing actor.
+part of this release. Standalone-core aliases such as `prism_gated` are
+rejected; the Diffusion mode is explicitly named `gated_quadratic`.
 
 ## Install in a separate pinned checkout
 
@@ -74,6 +86,8 @@ checkout. Modified or partially patched target files are rejected. It applies
 package and the termination helper into its environment package. The patch includes the selected-episode sampler remap, current
 `use_amp`/bf16 training behavior, incomplete-batch handling, LIBERO diagnostics,
 MCC correction, observation perturbations, action delay, and trace export.
+Use a fresh pinned checkout when moving from an earlier integration bundle;
+the installer does not overwrite a different released source version.
 
 If a Conda shell overrides the EGL vendor directory with Mesa-only libraries,
 headless rendering can fail despite a working NVIDIA driver. On the validated
@@ -126,19 +140,30 @@ diffusion training timesteps, ten inference steps, 128×128 images, U-Net widths
 
 | Profile | Batch | Workers | Meaning |
 |---|---:|---:|---|
-| `prism` | 64 | 8 | Recorded state-factorized PRISM recipe |
-| `historical-baseline` | 8 | 4 | Recorded nominal Diffusion recipe |
-| `matched-baseline` | 64 | 8 | New control matching PRISM training arguments; requires rerunning |
+| `prism` | 64 | 8 | New default learned-gate PRISM (`diffusion_gated_state_v2`) |
+| `baseline` | 64 | 8 | New matched nominal control for gated PRISM |
+| `legacy-prism` | 64 | 8 | Archived ungated recipe (`diffusion_factorized_state_v1`) |
+| `legacy-baseline` | 8 | 4 | Archived nominal Diffusion recipe |
 
-**The historical baseline and PRISM runs did not use matched batch sizes.**
-The new matched control has no inherited historical result. The patch's bf16
+`matched-baseline` remains an alias of the new `baseline` settings;
+`historical-baseline` remains an alias of `legacy-baseline`. Use `prism` and
+`baseline` together for a new comparison. The low-level LeRobot dataclass
+retains its ungated default for missing-field legacy config compatibility;
+the new runner explicitly saves `poly_kernel_lift_mode=gated_quadratic`.
+
+**The historical baseline and ungated PRISM runs did not use matched batch sizes.**
+Neither the gated actor nor the new matched control inherits a historical result. The patch's bf16
 and `drop_last` behavior matches the reviewed workspace, but the historical
 training-code revision is unavailable. Do not claim bitwise reproduction of
 past training from these recipes.
 
 `recipes/diffusion_tasks.json` records all 40 exact episode selections and the
-hashes of 80 saved training configs. Two complete task-0 training configs are
-included as evidence. The historical dataset revision was not pinned. Use
+hashes of 80 saved training configs, explicitly labeling the old PRISM profile
+`legacy-prism`. `prism_task0_train_config.json` and
+`historical-baseline_task0_train_config.json` remain unchanged historical
+evidence. `gated_prism_task0_train_config.json` is a new training recipe derived
+from those settings, with no attached checkpoint or result.
+The historical dataset revision was not pinned. Use
 `scripts/libero_task_episodes.py` to verify task-to-episode mappings against the
 installed dataset, and record `--dataset-revision` for a new run.
 
@@ -147,12 +172,16 @@ installed dataset, and record `--dataset-revision` for a new run.
 ```bash
 uv run --no-sync python "$PRISM_ROOT/integrations/lerobot/scripts/eval_diffusion.py" \
   --lerobot-root "$PWD" --suite libero_spatial --task-id 0 \
-  --baseline outputs/prism_diffusion/historical-baseline/libero_spatial/task_0/checkpoints/020000/pretrained_model \
+  --baseline outputs/prism_diffusion/baseline/libero_spatial/task_0/checkpoints/020000/pretrained_model \
   --prism outputs/prism_diffusion/prism/libero_spatial/task_0/checkpoints/020000/pretrained_model \
   --output-root eval_logs/prism_diffusion/libero_spatial/task_0
 ```
 
 The four rows are nominal Diffusion, MCC-Sensorless, MCC-Oracle, and PRISM.
+Evaluation reads the PRISM actor mode from the saved checkpoint config and
+records the corresponding gated-v2 or legacy-v1 actor ID. It never overrides
+that mode. Reuse the same task checkpoint across nominal and robustness
+conditions, and keep new gated results separate from legacy result sets.
 MCC modifies only the first three action coordinates. Sensorless force is
 estimated from actuator generalized forces and the end-effector Jacobian;
 the oracle uses the sum of simulator `cfrc_ext` force components over all
@@ -184,6 +213,9 @@ LeRobot's default evaluation seed.
 
 Copy `recipes/checkpoints.example.json` and update its explicit local
 `pretrained_model` directory paths to the checkpoints you intend to evaluate.
+The default example pairs newly trained gated `prism` with matched `baseline`.
+`checkpoints.legacy.example.json` provides separate `legacy-prism` and
+`legacy-baseline` paths; edit them to your actual archived checkpoint locations.
 Each directory must contain `config.json` and `model.safetensors`. The runner
 verifies the requested baseline or PRISM architecture before execution; it
 does not accept a Hub ID as a local checkpoint. No script chooses the latest
@@ -234,6 +266,12 @@ the explicit checkpoint; supplying `--profile` additionally checks that it
 matches. `--steps` is training-only and `--checkpoint` is evaluation-only.
 The registered SmolVLA PRISM identity requires the gated-quadratic, two-layer,
 RMSNorm configuration. Older interaction schemas are rejected explicitly.
+Its alpha is a learned per-feature parameter initialized to 0.01. Raw saved
+configs with missing mode/norm fields keep the historical `vanilla`/`false`
+defaults; the training runner explicitly selects the gated/RMSNorm settings.
+The conditioner rejects missing or extra `quadratic_scale` even when the
+parent policy loader is non-strict. Other policy keys retain upstream loading
+semantics; use strict loading when checking a complete checkpoint.
 The commands apply explicit common controls: RMSNorm, batch 64, eight workers, pretrained
 VLM initialization, frozen vision encoder, trainable action expert/state
 projection, 100,000 training steps, and a reported 80,000-step checkpoint.
@@ -252,7 +290,7 @@ presenting them as recovered results.
 ## Verification and provenance
 
 A simulator smoke on 2026-09-13 completed one 280-step Spatial task-0 episode
-for the historical nominal checkpoint and one for PRISM, with evaluation seed
+for the historical nominal checkpoint and one for legacy ungated PRISM, with evaluation seed
 1000 and shared stiffness 50/damping ratio 1. The nominal episode did not reach
 task success; PRISM reached success. These are execution checks, not estimates
 of paper success rates. The same-seed nominal repeat was not bitwise identical
@@ -260,8 +298,11 @@ across processes. The original early-stop run and corrected full-horizon run
 are retained separately in the local validation artifacts; see
 [the combined smoke report](../../validation/SMOKE_REPORT.md).
 
-After installing the Diffusion extras, verify both installed actor paths with
-a small CPU U-Net, synthetic observations, backward pass, and action sampling:
+After installing the Diffusion extras, verify baseline, legacy, and gated
+actor paths with a small CPU U-Net, synthetic observations, backward pass,
+and action sampling. The gated check also verifies a nonzero alpha gradient
+from the diffusion loss, an optimizer update, and a full-model checkpoint
+round trip:
 
 ```bash
 uv run --no-sync python "$PRISM_ROOT/integrations/lerobot/scripts/smoke_test.py" --lerobot-root "$PWD"

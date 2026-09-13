@@ -5,9 +5,79 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import tempfile
 from pathlib import Path
 
 from common import verify_installed
+
+
+def check_rgb_policy() -> None:
+    """Exercise actual policy loss and pretrained serialization with two cameras."""
+    import torch
+    from lerobot.configs.types import FeatureType, PolicyFeature
+    from lerobot.policies.diffusion.configuration_diffusion import DiffusionConfig
+    from lerobot.policies.diffusion.modeling_diffusion import DiffusionPolicy
+
+    for mode in ("latent_quadratic", "gated_quadratic"):
+        torch.manual_seed(17)
+        config = DiffusionConfig(
+            device="cpu",
+            input_features={
+                "observation.state": PolicyFeature(type=FeatureType.STATE, shape=(8,)),
+                "observation.images.front": PolicyFeature(type=FeatureType.VISUAL, shape=(3, 64, 64)),
+                "observation.images.wrist": PolicyFeature(type=FeatureType.VISUAL, shape=(3, 64, 64)),
+            },
+            output_features={"action": PolicyFeature(type=FeatureType.ACTION, shape=(7,))},
+            down_dims=(32, 64),
+            diffusion_step_embed_dim=32,
+            spatial_softmax_num_keypoints=4,
+            pretrained_backbone_weights=None,
+            crop_shape=None,
+            n_obs_steps=2,
+            horizon=16,
+            n_action_steps=8,
+            num_inference_steps=2,
+            use_poly_kernel_conditioning=True,
+            poly_kernel_source="state",
+            poly_kernel_lift_mode=mode,
+        )
+        policy = DiffusionPolicy(config)
+        batch = {
+            "observation.state": torch.randn(2, 2, 8),
+            "observation.images.front": torch.rand(2, 2, 3, 64, 64),
+            "observation.images.wrist": torch.rand(2, 2, 3, 64, 64),
+            "action": torch.randn(2, 16, 7),
+            "action_is_pad": torch.zeros(2, 16, dtype=torch.bool),
+        }
+        gate = policy.diffusion.poly_kernel_conditioner.quadratic_scale
+        before = None if gate is None else gate.detach().clone()
+        loss, _ = policy(batch)
+        assert torch.isfinite(loss)
+        loss.backward()
+        if gate is not None:
+            assert torch.isfinite(gate.grad).all() and gate.grad.abs().sum() > 0
+        torch.optim.Adam(policy.get_optim_params(), lr=1e-3).step()
+        if gate is not None:
+            assert not torch.equal(before, gate)
+        with tempfile.TemporaryDirectory(prefix="prism-rgb-policy-") as temporary:
+            policy.save_pretrained(temporary)
+            restored = DiffusionPolicy.from_pretrained(temporary, local_files_only=True, strict=True)
+            assert restored.config.poly_kernel_lift_mode == mode
+            for key, value in policy.state_dict().items():
+                torch.testing.assert_close(restored.state_dict()[key], value, rtol=0, atol=0)
+            saved_config_path = Path(temporary) / "config.json"
+            saved_config = json.loads(saved_config_path.read_text())
+            saved_config["poly_kernel_lift_mode"] = (
+                "latent_quadratic" if mode == "gated_quadratic" else "gated_quadratic"
+            )
+            saved_config_path.write_text(json.dumps(saved_config))
+            try:
+                DiffusionPolicy.from_pretrained(temporary, local_files_only=True, strict=False)
+            except RuntimeError as error:
+                assert "gate schema" in str(error)
+            else:
+                raise AssertionError("LeRobot accepted a checkpoint with the wrong saved gate mode")
+        print(f"RGB DiffusionPolicy {mode}: loss/backward/update and saved config/full-policy loading passed")
 
 
 def main() -> None:
@@ -31,8 +101,13 @@ def main() -> None:
 
     torch.set_num_threads(2)
     recipe_root = Path(__file__).resolve().parents[1] / "recipes"
-    for profile in ("historical-baseline", "prism"):
-        config_data = json.loads((recipe_root / f"{profile}_task0_train_config.json").read_text())["policy"]
+    profiles = {
+        "historical-baseline": "historical-baseline_task0_train_config.json",
+        "legacy-prism": "prism_task0_train_config.json",
+        "prism": "gated_prism_task0_train_config.json",
+    }
+    for profile, recipe in profiles.items():
+        config_data = json.loads((recipe_root / recipe).read_text())["policy"]
         config_data.pop("type")
         config_data["device"] = "cpu"
         draccus.decode(DiffusionConfig, config_data)
@@ -49,8 +124,9 @@ def main() -> None:
             horizon=16,
             n_action_steps=8,
             num_inference_steps=2,
-            use_poly_kernel_conditioning=profile == "prism",
+            use_poly_kernel_conditioning=profile != "historical-baseline",
             poly_kernel_source="state",
+            poly_kernel_lift_mode=config_data.get("poly_kernel_lift_mode", "latent_quadratic"),
         )
         model = DiffusionModel(config)
         batch = {
@@ -68,6 +144,18 @@ def main() -> None:
         loss.backward()
         if model.poly_kernel_conditioner is not None:
             assert all(parameter.grad is not None for parameter in model.poly_kernel_conditioner.parameters())
+        if profile == "prism":
+            gate = model.poly_kernel_conditioner.quadratic_scale
+            assert torch.isfinite(gate.grad).all() and gate.grad.abs().sum() > 0
+            before = gate.detach().clone()
+            torch.optim.Adam(model.parameters(), lr=1e-3).step()
+            assert not torch.equal(before, gate)
+            restored = DiffusionModel(config)
+            restored.load_state_dict(model.state_dict(), strict=True)
+            torch.testing.assert_close(restored.poly_kernel_conditioner.quadratic_scale, gate, rtol=0, atol=0)
+            print(
+                "Gated PRISM: alpha gradient, optimizer update, and full-model checkpoint round trip passed"
+            )
         model.eval()
         with torch.no_grad():
             actions = model.generate_actions(batch, noise=torch.zeros(2, 16, 7))
@@ -92,6 +180,8 @@ def main() -> None:
         model.load_state_dict(weights, strict=True)
         assert torch.isfinite(model(torch.randn(2, 16))).all()
         print(f"Historical main conditioner: strict checkpoint loading passed ({len(weights)} tensors)")
+
+    check_rgb_policy()
 
 
 if __name__ == "__main__":

@@ -12,10 +12,13 @@ import numpy as np
 import torch
 from isaacgym import gymapi
 
-from runtime import register_tasks
+from runtime import VARIANTS, register_tasks
 from actor import ActorCritic, PolyActorCritic
+from gated_actor import GatedPolyActorCritic
+from checkpoints import validate_checkpoint
 
 task_registry = register_tasks()
+from legged_gym.utils import class_to_dict  # noqa: E402
 
 
 METHODS = {
@@ -24,7 +27,7 @@ METHODS = {
         "path": None,
     },
     "PRISM": {
-        "kind": "respoly",
+        "kind": "gated",
         "path": None,
     },
 }
@@ -86,6 +89,8 @@ def load_model(method, root, device):
             activation="elu",
             init_noise_std=1.0,
         ).to(device)
+    elif method["kind"] == "gated":
+        model = GatedPolyActorCritic(705, 219, 12).to(device)
     elif method["kind"] == "respoly":
         model = PolyActorCritic(
             num_actor_obs=705,
@@ -110,10 +115,10 @@ def load_model(method, root, device):
     else:
         raise ValueError(method["kind"])
 
-    ckpt = torch.load(root / method["path"], map_location=device)
-    model.load_state_dict(ckpt["model_state_dict"])
+    ckpt = torch.load(root / method["path"], map_location=device, weights_only=True)
+    model.load_state_dict(ckpt["model_state_dict"], strict=True)
     model.eval()
-    if hasattr(model, "actor_encoder"):
+    if method["kind"] == "respoly":
         model.actor_encoder.set_poly_scale(1.0)
     return model
 
@@ -134,7 +139,10 @@ def actor_latent(model, obs):
             return enc(obs)
         if PRISM_FEATURE == "final_hidden":
             encoded = enc(obs)
-            return model.actor.net[:-1](encoded)
+            layers = model.actor.net if hasattr(model.actor, "net") else model.actor
+            return layers[:-1](encoded)
+        if isinstance(model, GatedPolyActorCritic):
+            return enc(obs) if PRISM_FEATURE == "encoder" else enc.polynomial_features(obs)
         x = enc.input_layer_norm(obs)
         if PRISM_FEATURE == "encoder":
             return enc(obs)
@@ -280,6 +288,7 @@ def main():
     parser.add_argument("--output", type=Path, default=Path("outputs/humanoid/hidden_physics_probe.json"))
     parser.add_argument("--mlp-path", type=Path, required=True)
     parser.add_argument("--prism-path", type=Path, required=True)
+    parser.add_argument("--prism-variant", choices=("prism", "legacy-prism"), default="prism")
     parser.add_argument(
         "--stable-only", action="store_true", help="Probe only upright, non-reset walking states."
     )
@@ -294,6 +303,9 @@ def main():
         help="Representation used for the PRISM probe.",
     )
     args = parser.parse_args()
+    METHODS["PRISM"]["kind"] = "gated" if args.prism_variant == "prism" else "respoly"
+    _, prism_cfg = task_registry.get_cfgs(VARIANTS[args.prism_variant][0])
+    selected_actor = validate_checkpoint(args.prism_path, class_to_dict(prism_cfg))
     PRISM_FEATURE = args.prism_feature
     if args.mlp_path is not None:
         METHODS["MLP"]["path"] = args.mlp_path
@@ -310,6 +322,8 @@ def main():
     results = {}
     metadata = {
         "task": args.task,
+        "actor_variant": selected_actor,
+        "prism_recipe": args.prism_variant,
         "samples": args.samples,
         "num_envs": args.num_envs,
         "warmup_steps": args.warmup_steps,

@@ -6,6 +6,11 @@ revisions and dependencies. G1 and main Diffusion commands live in their
 [LeRobot](integrations/lerobot/README.md) guides. The complete simulation workflow
 index is [EXPERIMENTS.md](EXPERIMENTS.md).
 
+All default PRISM recipes use learned per-feature gates initialized to 0.01.
+G1 and Diffusion have new actor versions and require new training; explicit
+legacy profiles retain their old checkpoints and protocols. SmolVLA and BFM
+retain their released gated computations. See [GATED_MIGRATION.md](GATED_MIGRATION.md).
+
 Record resolved configurations, source revisions, dataset versions, training and
 evaluation seeds, checkpoint identity, and raw metrics for every run. Use the
 [checkpoint inventory](validation/README.md) to inspect saved evidence. The
@@ -30,6 +35,11 @@ per collection, a 2.56M replay buffer, and 4.8M checkpoint intervals. PRISM
 transforms `history_actor` with a degree-2 gated product, gate initialization
 0.01, a two-layer projection with Mish, and RMSNorm. The recorded training accelerator
 was one NVIDIA A40.
+
+For fresh training, requesting `BFM_HISTORY_CONDITIONER_TYPE=prism` also defaults
+to this gated product. Historical saved filter configurations retain their
+original missing-field defaults; the [BFM guide](integrations/bfm-zero/README.md)
+describes checkpoint schema checks.
 
 | Method | Overrides after loading the shared recipe |
 |---|---|

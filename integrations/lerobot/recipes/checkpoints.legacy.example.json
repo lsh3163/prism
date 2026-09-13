@@ -1,0 +1,162 @@
+{
+  "libero_spatial:0": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_spatial/task_0/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_spatial/task_0/checkpoints/020000/pretrained_model"
+  },
+  "libero_spatial:1": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_spatial/task_1/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_spatial/task_1/checkpoints/020000/pretrained_model"
+  },
+  "libero_spatial:2": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_spatial/task_2/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_spatial/task_2/checkpoints/020000/pretrained_model"
+  },
+  "libero_spatial:3": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_spatial/task_3/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_spatial/task_3/checkpoints/020000/pretrained_model"
+  },
+  "libero_spatial:4": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_spatial/task_4/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_spatial/task_4/checkpoints/020000/pretrained_model"
+  },
+  "libero_spatial:5": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_spatial/task_5/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_spatial/task_5/checkpoints/020000/pretrained_model"
+  },
+  "libero_spatial:6": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_spatial/task_6/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_spatial/task_6/checkpoints/020000/pretrained_model"
+  },
+  "libero_spatial:7": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_spatial/task_7/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_spatial/task_7/checkpoints/020000/pretrained_model"
+  },
+  "libero_spatial:8": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_spatial/task_8/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_spatial/task_8/checkpoints/020000/pretrained_model"
+  },
+  "libero_spatial:9": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_spatial/task_9/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_spatial/task_9/checkpoints/020000/pretrained_model"
+  },
+  "libero_10:0": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_10/task_0/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_10/task_0/checkpoints/020000/pretrained_model"
+  },
+  "libero_10:1": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_10/task_1/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_10/task_1/checkpoints/020000/pretrained_model"
+  },
+  "libero_10:2": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_10/task_2/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_10/task_2/checkpoints/020000/pretrained_model"
+  },
+  "libero_10:3": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_10/task_3/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_10/task_3/checkpoints/020000/pretrained_model"
+  },
+  "libero_10:4": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_10/task_4/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_10/task_4/checkpoints/020000/pretrained_model"
+  },
+  "libero_10:5": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_10/task_5/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_10/task_5/checkpoints/020000/pretrained_model"
+  },
+  "libero_10:6": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_10/task_6/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_10/task_6/checkpoints/020000/pretrained_model"
+  },
+  "libero_10:7": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_10/task_7/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_10/task_7/checkpoints/020000/pretrained_model"
+  },
+  "libero_10:8": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_10/task_8/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_10/task_8/checkpoints/020000/pretrained_model"
+  },
+  "libero_10:9": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_10/task_9/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_10/task_9/checkpoints/020000/pretrained_model"
+  },
+  "libero_goal:0": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_goal/task_0/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_goal/task_0/checkpoints/020000/pretrained_model"
+  },
+  "libero_goal:1": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_goal/task_1/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_goal/task_1/checkpoints/020000/pretrained_model"
+  },
+  "libero_goal:2": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_goal/task_2/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_goal/task_2/checkpoints/020000/pretrained_model"
+  },
+  "libero_goal:3": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_goal/task_3/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_goal/task_3/checkpoints/020000/pretrained_model"
+  },
+  "libero_goal:4": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_goal/task_4/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_goal/task_4/checkpoints/020000/pretrained_model"
+  },
+  "libero_goal:5": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_goal/task_5/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_goal/task_5/checkpoints/020000/pretrained_model"
+  },
+  "libero_goal:6": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_goal/task_6/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_goal/task_6/checkpoints/020000/pretrained_model"
+  },
+  "libero_goal:7": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_goal/task_7/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_goal/task_7/checkpoints/020000/pretrained_model"
+  },
+  "libero_goal:8": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_goal/task_8/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_goal/task_8/checkpoints/020000/pretrained_model"
+  },
+  "libero_goal:9": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_goal/task_9/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_goal/task_9/checkpoints/020000/pretrained_model"
+  },
+  "libero_object:0": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_object/task_0/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_object/task_0/checkpoints/020000/pretrained_model"
+  },
+  "libero_object:1": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_object/task_1/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_object/task_1/checkpoints/020000/pretrained_model"
+  },
+  "libero_object:2": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_object/task_2/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_object/task_2/checkpoints/020000/pretrained_model"
+  },
+  "libero_object:3": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_object/task_3/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_object/task_3/checkpoints/020000/pretrained_model"
+  },
+  "libero_object:4": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_object/task_4/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_object/task_4/checkpoints/020000/pretrained_model"
+  },
+  "libero_object:5": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_object/task_5/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_object/task_5/checkpoints/020000/pretrained_model"
+  },
+  "libero_object:6": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_object/task_6/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_object/task_6/checkpoints/020000/pretrained_model"
+  },
+  "libero_object:7": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_object/task_7/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_object/task_7/checkpoints/020000/pretrained_model"
+  },
+  "libero_object:8": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_object/task_8/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_object/task_8/checkpoints/020000/pretrained_model"
+  },
+  "libero_object:9": {
+    "baseline": "outputs/prism_diffusion/legacy-baseline/libero_object/task_9/checkpoints/020000/pretrained_model",
+    "prism": "outputs/prism_diffusion/legacy-prism/libero_object/task_9/checkpoints/020000/pretrained_model"
+  }
+}

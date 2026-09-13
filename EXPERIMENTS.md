@@ -6,12 +6,18 @@ workflows below; simulator assets, datasets, and checkpoints are external.
 [Completed validation](validation/SMOKE_REPORT.md) covers bounded G1 and LIBERO
 execution checks, not full retraining or benchmark averages.
 
+The default G1 and Diffusion recipes now train learned gated actors. Their
+previous checkpoints and execution checks belong to the legacy variants;
+rerun training, evaluation, and representation probes for new gated results.
+SmolVLA and BFM already used the learned gated interaction. The
+[migration guide](GATED_MIGRATION.md) records the scope of the change.
+
 ## Experiment-to-code map
 
 | Workflow | Entry points | Scope |
 |---|---|---|
 | G1 PPO baseline, larger actor, PRISM | [Humanoid-Gym guide](integrations/humanoid-gym/README.md): `train.py`, `run_suite.py`, `evaluate.py` | Nominal locomotion; explicit training seeds and checkpoint paths. |
-| G1 degree ablations | Same guide: `degree1`, `degree2`, `degree3` variants | Fixed scale; the main `prism` variant instead uses degree-2 warmup. |
+| G1 degree ablations | Same guide: `degree1`, `degree2`, `degree3` variants | Same gated recurrence; degree 1 is the first-order control and has no interaction gate. |
 | LIBERO Diffusion | [LeRobot guide](integrations/lerobot/README.md): `train_diffusion.py`, `eval_diffusion.py` | Forty task-specific policies across Spatial, Object, Goal, and Long. |
 | MCC and robustness sweeps | LeRobot `sweep_diffusion.py --kind nominal`, `robustness`, or `mcc` | Frozen baseline/MCC/PRISM checkpoints; explicit checkpoint map. |
 | BFM-Zero baseline, larger core, PRISM | [Reproducibility](REPRODUCIBILITY.md#bfm-zero), [scenario launcher](integrations/bfm-zero/evaluate_scenarios.py) | LAFAN tracking: nominal, low friction, and payload mass. |
@@ -30,16 +36,19 @@ Hardware experiments and their results are outside this simulation release.
 **G1.** Preserve 15×47 actor history, 3×73 critic history, 12 joint targets,
 action scale 0.25, and a 0.01-second control step. The main PPO recipe uses
 3,001 iterations, rollout length 60, two epochs, four minibatches, learning rate
-1e-5, gamma 0.994, and GAE 0.9. Warmup and fixed-degree runs are separate
-configurations. The nominal evaluator disables observation noise, dynamics
+1e-5, gamma 0.994, and GAE 0.9. New PRISM runs learn per-feature gates initialized
+to 0.01 with no scalar warmup. Historical warmup and fixed-degree actors use
+explicit legacy configurations. The nominal evaluator disables observation noise, dynamics
 randomization, action delay/noise, and pushes; rough terrain is not covered by
 this protocol. Actor-only and total actor/critic parameter counts differ.
 
 **Diffusion.** The main recipe uses two 128×128 RGB cameras, two observation
 steps, horizon 16, eight action steps, 100 diffusion training timesteps, ten
 inference timesteps, U-Net widths 128/256/512, and 20K training updates.
-The historical baseline uses batch 8/workers 4; PRISM uses batch 64/workers 8.
-`matched-baseline` is a separate batch-64 control requiring new training.
+New `baseline` (also `matched-baseline`) and gated `prism` recipes use batch
+64/workers 8. Historical `legacy-baseline` uses batch 8/workers 4;
+`legacy-prism` uses batch 64/workers 8. Those archived runs are not a matched
+batch-size comparison and do not evaluate the new gated actor.
 Keep the 7D relative EEF action/controller interface and saved preprocessing.
 
 **MCC.** The sensorless controller uses actuator generalized forces and the

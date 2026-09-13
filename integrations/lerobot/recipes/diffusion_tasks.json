@@ -60,7 +60,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -125,7 +125,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -191,7 +191,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -254,7 +254,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -316,7 +316,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -375,7 +375,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -441,7 +441,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -496,7 +496,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -563,7 +563,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -627,7 +627,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -680,7 +680,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -749,7 +749,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -810,7 +810,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -865,7 +865,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -923,7 +923,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -984,7 +984,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -1040,7 +1040,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -1103,7 +1103,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -1152,7 +1152,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -1206,7 +1206,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -1269,7 +1269,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -1337,7 +1337,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -1404,7 +1404,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -1460,7 +1460,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -1526,7 +1526,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -1579,7 +1579,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -1639,7 +1639,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -1709,7 +1709,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -1778,7 +1778,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -1834,7 +1834,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -1898,7 +1898,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -1963,7 +1963,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -2030,7 +2030,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -2096,7 +2096,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -2161,7 +2161,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -2223,7 +2223,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -2288,7 +2288,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -2353,7 +2353,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -2423,7 +2423,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -2488,7 +2488,7 @@
           "steps": 20000,
           "seed": 0
         },
-        "prism": {
+        "legacy-prism": {
           "batch_size": 64,
           "num_workers": 8,
           "steps": 20000,
@@ -2739,244 +2739,246 @@
       "sha256": "57caf50e85d00e7bc09db82e890b144a85433df282381b49e71c9be13f49b366"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_spatial:0",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/spatial_proprio_factorized256_poly_kernel_steps20000/libero_spatial/task_0/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "25c0fee99aaca0dad3ef68c580962352bbc1b67d9d0a2cb14693c18b36f2ac02"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_spatial:1",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/spatial_proprio_factorized256_poly_kernel_steps20000/libero_spatial/task_1/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "9e56930151972bb353cd67b4dd2a83490a1f21016a104d74212ca0cab0cac649"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_spatial:2",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/spatial_proprio_factorized256_poly_kernel_steps20000/libero_spatial/task_2/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "fb907535ba548e7e788242e48415519ebcd4bd87b4889ee77bd470282acf41ed"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_spatial:3",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/spatial_proprio_factorized256_poly_kernel_steps20000/libero_spatial/task_3/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "46f696bc493fbbaa0bbeb9c23d9da8e594d004d25be7cf5aa199107cae2fdf25"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_spatial:4",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/spatial_proprio_factorized256_poly_kernel_steps20000/libero_spatial/task_4/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "9bf9cd9f947782984f14b9fdccf403e8c636804e9de8905c3305c9321b36a306"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_spatial:5",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/spatial_proprio_factorized256_poly_kernel_steps20000/libero_spatial/task_5/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "35343103ec39845ac3e663ab230a5a400924a53377573d45ccd2534bdee56c1b"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_spatial:6",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/spatial_proprio_factorized256_poly_kernel_steps20000/libero_spatial/task_6/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "f633c2d2ad6d70c3d3a957f3fdbb2a60d17c3a445950a5c62f124ea6658b2909"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_spatial:7",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/spatial_proprio_factorized256_poly_kernel_steps20000/libero_spatial/task_7/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "7f3dad0140d07bd4d541ebb58df15a475e717080c4bf81daecfc179bc5d37211"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_spatial:8",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/spatial_proprio_factorized256_poly_kernel_steps20000/libero_spatial/task_8/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "3f25227f00235b0cf2bfd4368b5f063a31c0fe7e719b609894f50347a4f8ec3f"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_spatial:9",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/spatial_proprio_factorized256_poly_kernel_steps20000/libero_spatial/task_9/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "577209beeed70b3eb2052ede0c59663dddf76d2d74786442c9f3e6b503e1b7ab"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_10:0",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_10/task_0/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "71f86ecba77cc413a2e26f21650c688d5c7808574b9406ba61eee8c9f4af0f42"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_10:1",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_10/task_1/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "70a2a450dbeb6bcf70ad9ac8bd6116d9da40ada1016d43b3ec03edbb11a64998"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_10:2",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_10/task_2/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "59b1fa585e88744bd6aedb808973c3c69724a74204e23bc658cc4cbfa0245ae8"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_10:3",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_10/task_3/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "9fba83f6e102e9ae7e2bc97913369de801f0b4f59b08f5151aec0780a1d1fab4"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_10:4",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_10/task_4/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "90b9d9e414e830a372d8678fc8f1d9afa468ecfac5840d143acbfaf50764b36f"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_10:5",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_10/task_5/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "aa87853bc3011a4fbaa1f1c87bdca19f649db51fe67717e643c757b16d1d7f08"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_10:6",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_10/task_6/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "1c70bff38a084fc6b7509454daf1b42950d3cf161f1f800772fa46364d2210b7"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_10:7",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_10/task_7/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "e59bcb420a3218cdc035fb6e6a740dcd6f2be45c7d9692ae28879020a691fe0c"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_10:8",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_10/task_8/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "ed5225d161ee54ecc8a9f48bbe0667aca8e3e5f09be0e870e4436211f8bc05f1"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_10:9",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_10/task_9/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "36c5ee48be655979a97b769fb619555ea7537792824dcda28ff59e8e1d6b10b4"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_goal:0",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_goal/task_0/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "a55d94556255039e8c249e32ace014683c610cbde694bb9ba40ff20bec342a7f"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_goal:1",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_goal/task_1/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "08d3197397a04ae77ab7528be12743b2ab8a3f933da898b6c25879b43a4a2cf4"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_goal:2",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_goal/task_2/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "f77d44997d6464e0c14d4cfeec65256af6a97ed8c835555abcfa0ab557757ccf"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_goal:3",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_goal/task_3/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "fc832cdd6fc10a44a2d74d200370c4eb896cb6d9118422a55e7f74dcc95f89f3"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_goal:4",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_goal/task_4/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "0e62124552fdc5958d6b1d4a6d91035f9b8290235ac7863c2c4ae1d354616e9c"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_goal:5",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_goal/task_5/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "06e18a769c1b8b5e54363f5a6e34b464e2e8b52af85dc8a7797ffca921a21c4e"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_goal:6",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_goal/task_6/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "fc9c07078ab307a585d0019571c37125f7d603a5f106535b27e3f1a00a4d5404"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_goal:7",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_goal/task_7/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "ea7cde88ad729cdd910e9abf952b265806c69e615d29e919302837671cbe2bdd"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_goal:8",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_goal/task_8/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "7061e757f49897b174b24f895890241e77a53d8464777f3ab3b04ec16b7153f1"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_goal:9",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_goal/task_9/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "f81f0331d83467ed902f7b58c1bb2d2fbbe30b7248fdda772375c8a42f046893"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_object:0",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_object/task_0/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "c2777386c024adce60935f2e5c8451d219e4bdf02ba7f9a1f6e5fc2ce1b46d3f"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_object:1",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_object/task_1/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "3f5a3f409e7d6c677c0f619c76595ccc03382e0ab266e350872b881be6b387b6"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_object:2",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_object/task_2/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "6d57c2a48074d24e703397cd777b971a568f3faf18326089b2dc778896db3c67"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_object:3",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_object/task_3/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "27b6d07b62ed1725ed1801427ef4265c12fc40abb48493a5649d5161fbd7382f"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_object:4",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_object/task_4/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "00bb33211ee32fe9b312401324485a8917afa77f10ed2c4e18bbfc8c2468974c"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_object:5",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_object/task_5/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "8b2793aa24a4dd51d0b89b8a132f25fe4d11e9923f0e84e460be751b8d25a82a"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_object:6",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_object/task_6/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "7c64cafec1ee1d5348475e22222f642c7c214cfc450d1686b4780856f567388c"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_object:7",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_object/task_7/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "93762b8b285776168949aede28e0b44036c191085165fd19fbdc1dcad4a1a0ef"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_object:8",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_object/task_8/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "987510f3bea8cee4d9fa5bd7a22bba938a0f3a534abcdd84026d05f0a04112fc"
     },
     {
-      "profile": "prism",
+      "profile": "legacy-prism",
       "task": "libero_object:9",
       "path": "outputs/paper_diffusion_libero_per_task/seed0/nonspatial_proprio_factorized256_poly_kernel_steps20000/libero_object/task_9/diffusion_poly_kernel/checkpoints/020000/pretrained_model/train_config.json",
       "sha256": "5929257445a27f4bb4832a7804beb9bd3c6b577b72c53c3659b58e8c8be4b61c"
     }
-  ]
+  ],
+  "historical_actor_variant": "diffusion_factorized_state_v1",
+  "profile_note": "The historical PRISM recipe is legacy-prism. New default prism uses these recorded batch/workers/episode settings with learned gated_quadratic; no historical results belong to diffusion_gated_state_v2."
 }

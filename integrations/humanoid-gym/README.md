@@ -1,26 +1,37 @@
 # G1 Humanoid-Gym simulation experiments
 
-This directory contains the G1 task, environment overrides, actor, training,
-nominal evaluation, and physics probes extracted from the research code.
+This directory contains the G1 task, environment overrides, actors, training,
+nominal evaluation, and physics probes.
 It adapts the Humanoid-Gym PPO recipe to Unitree G1 using Unitree RL Gym and
 RSL-RL. It is not an XBot-L reproduction of the official Humanoid-Gym repository.
 
-The extraction preserves the historical residual polynomial actor and its
-checkpoint keys under the identifier `g1_residual_poly_v1`. It does not replace
-that actor with the newer gated `prism_robot.PRISMConditioner`. These are distinct implementations; a common
-PRISM name does not establish architectural or experimental equivalence.
+New `prism` runs use `g1_gated_poly_v2`: every higher-order interaction has a
+learned per-feature alpha, initialized to `0.01` and optimized by PPO. There is
+no scheduled warmup. `gated_actor.py` implements the common gated recurrence in
+Python 3.8, with the G1 ELU projection and actor/critic interfaces.
+
+Historical residual checkpoints retain `g1_residual_poly_v1` and their original
+keys in `actor.py`. Select them explicitly with `legacy-prism` or a
+`legacy-degree*` recipe. Old checkpoints are rejected by the new actor; no
+weight conversion or equivalence between these variants is implied.
 
 ## Source and validation status
 
-- Exact CPU parity passed against the original actor for baseline, larger MLP,
+- New gated actors pass degree-three polynomial/gradient checks, learned-alpha
+  optimizer and save/load checks, privileged-critic isolation, and rejection
+  of incompatible historical checkpoints. A real two-environment, two-update
+  PPO run passed on September 13, 2026: all 256 alpha features changed, Adam
+  recorded 16 optimization steps, and the saved checkpoint reloaded exactly.
+  This is a new training recipe requiring fresh performance results.
+- Historical CPU parity passed against the original actor for baseline, larger MLP,
   degree 1, degree 2, degree 2 with warmup, and degree 3. Polynomial actor
   gradients also match exactly. An existing trained degree-2 warmup checkpoint
   loads strictly and gives exactly matching actions.
 - Extracted noisy actor/critic history and all 17 G1-specific reward functions
   match the original source on identical synthetic states.
-- Imports and all six task registrations passed in Python 3.8 with Isaac Gym
+- Historical imports and task registrations passed in Python 3.8 with Isaac Gym
   Preview 4 using clean source trees at the upstream commits below.
-- A headless GPU simulation passed on September 13, 2026 using the clean pinned
+- A historical residual-actor GPU simulation passed on September 13, 2026 using the clean pinned
   sources and the trained degree-2 warmup checkpoint: seed 1, one environment,
   one episode, 2,400 control steps (24 simulated seconds), survived to timeout.
 - A separate 200-step simulation comparison against the original research
@@ -34,7 +45,7 @@ PRISM name does not establish architectural or experimental equivalence.
 extraction boundaries. No checkpoints, recorded robot data, or physical robot
 deployment implementation are included here.
 
-The single nominal episode returned `148.496765`, with mean planar velocity
+The historical residual actor's single nominal episode returned `148.496765`, with mean planar velocity
 error `0.143841 m/s` and mean absolute yaw-rate error `0.048508 rad/s`. It took
 151.36 seconds on the validation machine. These are smoke-test measurements,
 not paper results. The checkpoint SHA-256 is
@@ -43,6 +54,13 @@ Local ignored evidence is under
 `outputs/prism_release_validation/20260913T143558Z/humanoid/`: command and source
 hash manifests, simulator logs, episode metrics, both trace arrays, and their
 comparison. The checkpoint and local evidence are not distributed in this release.
+
+New gated PPO evidence is separate, under
+`outputs/gated_g1_validation/20260913T174104Z/`. The public training CLI ran
+240 environment transitions in 36.80 seconds. Alpha remained finite and changed
+by up to `0.004110` from its `0.01` initialization; this verifies learned PPO
+updates, not a locomotion benchmark. See its `SUMMARY.md`, `execution.json`,
+`gate_validation.json`, simulator log and per-run training manifest.
 
 ## Environment
 
@@ -71,26 +89,37 @@ export GYM_CODE="$PRISM_ROOT/integrations/humanoid-gym"
 
 The Unitree checkout supplies the G1 URDF/meshes, base task, simulator setup,
 and generic rewards. This release supplies only the experiment-specific code.
-`runtime.py` registers these tasks and the actor in the current process and
-adds the PPO warmup hook when absent. It does not modify either checkout.
+`runtime.py` registers these tasks and actors in the current process. It adds
+the compatibility warmup hook for legacy actors when absent; the new gated
+actor has no warmup method and is optimized directly by the ordinary PPO optimizer.
+It does not modify either checkout.
 Use a clean pinned checkout to avoid inheriting unrelated local extensions.
 
 ## Training and ablations
 
-| `--variant` | Actor | Polynomial degree | Warmup |
+| `--variant` | Actor | Polynomial degree | Alpha / scale |
 |---|---|---:|---:|
 | `baseline` | MLP `[512, 256, 128]` | — | — |
-| `larger` | MLP `[816, 352, 160]` | — | — |
-| `degree1` | Residual polynomial + MLP | 1 | 0 |
-| `degree2` | Residual polynomial + MLP | 2 | 0 |
-| `prism` | Residual polynomial + MLP | 2 | 500 PPO updates |
-| `degree3` | Residual polynomial + MLP | 3 | 0 |
+| `larger` | MLP `[648, 328, 160]` | — | — |
+| `degree1` | Gated encoder + MLP | 1 | No interaction gate |
+| `prism`, `degree2` | Gated encoder + MLP | 2 | Learned per feature, init `0.01` |
+| `degree3` | Gated encoder + MLP | 3 | Learned per feature, init `0.01` |
+| `legacy-larger` | MLP `[816, 352, 160]` | — | — |
+| `legacy-degree1/2/3` | Historical residual encoder + MLP | 1 / 2 / 3 | Fixed scalar `1` |
+| `legacy-prism` | Historical residual encoder + MLP | 2 | Scalar warmup over 500 PPO updates |
+
+The new degree-two actor mean has 724,876 parameters, including its encoder.
+The new `larger` control has 724,932 (56 more, a 0.0077% difference).
+Total degree-two actor/critic parameters, including Gaussian standard deviation,
+are 1,123,737. The marker buffer is excluded from parameter counts.
 
 All tasks use a 705D actor input (15 frames × 47 features), 219D privileged
 critic input (3 × 73), and 12 actions. The polynomial width is 256. The critic
 is a plain `[768, 256, 128]` MLP. The training config retains 4,096 environments,
 60 steps per PPO iteration, 3,001 iterations, learning rate `1e-5`, two learning
 epochs, four minibatches, gamma `0.994`, and lambda `0.9`.
+Actor histories include gait phase, velocity commands, joint position/velocity,
+prior actions and IMU features. Privileged physical targets remain critic-only.
 
 First inspect a command, then run a short simulator check in the prepared
 environment before committing to the full training matrix:
@@ -114,6 +143,11 @@ uv run --no-project --python "$GYM_PYTHON" python "$GYM_CODE/run_suite.py" \
   --seeds 1 2 3 4 5 --execute
 ```
 
+The default suite contains baseline, larger, degree one, PRISM/degree two and
+degree three. It does not duplicate the `degree2` alias or include legacy runs.
+Use `--variants legacy-prism legacy-degree1 legacy-degree2 legacy-degree3`
+to explicitly select a historical matrix.
+
 Choose explicit experiment names for standalone training with
 `--experiment_name=...`. Upstream writes checkpoints under its
 `logs/<experiment_name>/<timestamp>_<run_name>/` directory. Training refuses to
@@ -126,7 +160,8 @@ Before the first PPO rollout, `train.py` writes `prism_run_manifest.json` beside
 the future checkpoints. It records the resolved environment/training seed and
 configurations, actor identity and degree/warmup, command, runtime versions,
 imported source hashes, available git revisions, and any resumed checkpoint's
-SHA-256. PRISM runs use `g1_residual_poly_v1`; MLP controls have a null PRISM actor
+SHA-256. New PRISM runs use `g1_gated_poly_v2`; explicit legacy PRISM runs use
+`g1_residual_poly_v1`. MLP controls have a null PRISM actor
 identifier and retain their `baseline` or `larger` recipe name. Keep this file
 with checkpoints when moving or sharing a run. It records training inputs,
 not evidence that training completed or reproduced a paper result. It is not
@@ -139,7 +174,25 @@ implicit latest-run/checkpoint selection is rejected. Resume loads the original
 optimizer and actor buffers through the unchanged upstream loader and writes
 the continuation to a fresh run directory.
 
-The latent polynomial calculation is
+The new gated calculation is
+
+```text
+phi = factors[0](x)
+phi = phi * (1 + alpha[i-1] * factors[i](x))   for i = 1, ..., degree-1
+z = ELU(projection(phi))
+action_mean = actor_MLP(z)
+```
+
+Each factor is an affine 705→256 map. Alpha has shape `(degree-1, 256)` and is
+an `nn.Parameter`, initialized to `0.01`; later factor biases start at zero.
+The post-interaction projection is affine 256→256, followed by ELU and actor
+MLP widths `[512, 256, 128]`. Degree one omits alpha entirely. The checkpoint
+contains `actor_variant_version=2`, `actor_encoder.factors.*`,
+`actor_encoder.interaction_scales`, and `actor_encoder.projection.*`.
+Loading requires strict schema matching; residual keys and warmup buffers do
+not belong to this actor. No scheduled updates change alpha.
+
+The explicit legacy residual calculation remains
 
 ```text
 h = poly_in_proj(x)
@@ -149,7 +202,7 @@ z = ELU(raw_proj(x) + scale * poly_out_proj(p))
 action_mean = actor_MLP(z)
 ```
 
-`scale = min(update / 500, 1)` for the warmup variant. The polynomial branch
+`scale = min(update / 500, 1)` for `legacy-prism`. The polynomial branch
 before ELU has the configured degree bound. The final actor includes ELU
 activations and is not itself a polynomial function of the observation.
 Warmup buffers are stored in the checkpoint and restored when loading it.
@@ -161,8 +214,7 @@ Use explicit checkpoint paths; some existing experiment artifacts use
 
 ```bash
 uv run --no-project --python "$GYM_PYTHON" python "$GYM_CODE/evaluate.py" \
-  --task=g1_humanoidgym_ppo_poly_warmup \
-  --model_path=/absolute/path/to/model_3001.pt \
+  --variant=prism --model_path=/absolute/path/to/new_gated_model.pt \
   --variant_name=prism --seed=1 --episodes=200 --num_envs=100 --headless \
   --save_path=outputs/humanoid/seed1_nominal.json
 
@@ -174,6 +226,18 @@ uv run --no-project --python "$GYM_PYTHON" python "$GYM_CODE/probe_hidden_physic
   --mlp-path=/absolute/path/to/baseline.pt \
   --prism-path=/absolute/path/to/prism.pt --stable-only
 ```
+
+Evaluation defaults to the new `prism` recipe. For an old residual warmup
+checkpoint, use `--variant=legacy-prism`. Original task IDs such as
+`--task=g1_humanoidgym_ppo_poly_warmup` still select only their historical actor;
+they are never redirected to the new implementation. Results record the actual
+actor ID and checkpoint SHA-256, and existing `--save_path` files are rejected.
+
+Probes also default to gated degree two. Add `--prism-variant=legacy-prism` when
+using an old residual checkpoint. In the hidden-physics probe, gated `poly`
+features are the raw multiplicative features before projection; `combined` and
+`encoder` use the projected ELU representation. Historical feature definitions
+are retained under the explicit legacy choice.
 
 The historical evaluator disables observation noise and friction/mass
 randomization, delayed/noisy actions, and pushes by default. Survival means
@@ -214,7 +278,7 @@ uv run --no-project --python "$GYM_PYTHON" python "$GYM_CODE/verify_environment.
 cd "$PRISM_ROOT"
 RSL_RL_REFERENCE_ROOT=/path/to/original/modified/rsl_rl \
   uv run --no-project --python "$GYM_PYTHON" python \
-  -m unittest discover -s tests -p test_humanoid_actor.py -v
+  -m unittest discover -s tests -p 'test_humanoid*.py' -v
 ```
 
 Set `HUMANOID_CHECKPOINT` to an original degree-2 warmup checkpoint to also

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "actor_variant": "g1_residual_poly_v1",
-  "status": "source extraction with actor/tensor parity, bounded nominal simulator validation and exact 200-step trajectory parity; paper reproduction unresolved",
+  "actor_variant": "g1_gated_poly_v2",
+  "status": "learned gated actor is the new default; exact historical residual compatibility retained; new training recipe requires fresh results",
   "scope": "simulation only",
   "upstream": [
     {
@@ -86,15 +86,17 @@
   ],
   "extraction": {
     "actor.py": "Exact ActorCritic/get_activation and LayerNormMLP/PolyEncoder/ResidualPolyEncoder/PolyActorCritic class bodies; remove relative import and unrelated LayerNormActorCritic; formatting only.",
-    "config.py": "G1RoughCfg plus G1HumanoidGymCfg and six PPO variants. Remove disabled sound configuration; retain experiment values.",
+    "config.py": "Retain historical G1 task and six PPO configurations. Add new gated D1/D2/D3 recipes and a [648,328,160] MLP control within 0.01% of the gated D2 actor mean parameter count.",
     "g1_env.py": "Specialize to humanoid_gym_style=True, falcon_style=False, no feature lifting/audio/depth/penalty curriculum. Retain actor/critic history, gait and 17 G1 reward methods.",
     "legacy_base.py": "Overrides for step/post_physics/reset, rigid-body mass and shape friction, action delay, PD gains/torque, push and initialization. Remove disabled acoustic-material, FALCON and grouped-reward branches. Other behavior/assets inherited from pinned upstream.",
-    "runtime.py": "Process-local task and actor registration. Add one warmup advance after a PPO update only when the research hook is absent.",
+    "runtime.py": "Process-local task/actor registration: default prism and degree1/2/3 select gated actors; legacy-* recipes retain original task IDs. Compatibility warmup hook only acts on legacy actors exposing advance_poly_warmup.",
     "train.py": "Use upstream CLI and runner, propagate requested seed to environment and training config. Require resolved nonnegative seeds and explicit resume selection. Write training-start metadata in an exclusively created fresh run directory; preserve model/optimizer/checkpoint computation.",
-    "evaluate.py": "Preserve historical evaluation math; remove disabled sound settings, use extracted registration, propagate environment seed, explicitly restrict to plane terrain.",
-    "probes": "Preserve historical targets, filters and fitting. Import extracted actor/tasks; require explicit checkpoints; replace personal output paths with relative outputs; propagate environment seed. Remove unused allocation only.",
+    "evaluate.py": "Retain nominal evaluation math; default new gated prism, explicit legacy task/recipe selection, checkpoint-schema preflight, actor ID/hash result metadata and no-overwrite output.",
+    "probes": "Historical target/filter/fitting code retained; default gated degree2 representation, explicit legacy-prism selector preserves old residual representation; strict checkpoint selection and actor ID metadata.",
     "provenance.py": "Release-only portable metadata helper: resolved configuration/actor identity, source and checkpoint hashes, available git revisions, and runtime versions. Does not modify model state.",
-    "run_suite.py": "Explicit seed/variant matrix, previews by default; --execute launches training. Retain --dry-run as an explicit preview flag."
+    "run_suite.py": "Explicit seed/variant matrix, previews by default; --execute launches training. Retain --dry-run as an explicit preview flag.",
+    "gated_actor.py": "New release implementation, not a historical extraction: degree-K affine gated recurrence with learned per-feature alpha=.01, affine projection + ELU, unchanged G1 observation/action/critic interfaces. Strict actor_variant_version=2 marker. No scheduled warmup or historical raw skip.",
+    "checkpoints.py": "Reject crossed actor schemas and incompatible degree/gate or historical warmup selection before simulator construction; runner still loads strictly."
   },
   "inspected_environment": {
     "python": "3.8",
@@ -105,12 +107,13 @@
     "rsl_rl": "1.0.2"
   },
   "validation": {
-    "actor_reference_parity": "passed: six variants; exact output equality, polynomial gradients, strict state dict loads",
+    "actor_reference_parity": "passed for historical g1_residual_poly_v1 and historical MLP controls: exact outputs, polynomial gradients and strict trained checkpoint loads",
     "trained_checkpoint": {
       "relative_source_path": "logs/respoly_g1_humanoidgym_seed1_respoly_d2_warmup/Apr17_16-57-55_/model_3001.pt",
       "sha256": "f05a364979651edf297c008ae9e4e00fba824aeaa56208f185a86f78c1914183",
       "included_in_release": false,
-      "result": "strict load and exact CPU action equality passed"
+      "result": "strict load and exact CPU action equality passed",
+      "actor_variant": "g1_residual_poly_v1"
     },
     "environment_tensor_parity": "passed: three noisy history updates and all 17 G1-specific reward functions on identical synthetic states",
     "clean_pinned_import": "passed under Python3.8 + IsaacGym Preview4, all six task registrations; no simulator constructed",
@@ -157,12 +160,55 @@
       "randomized_physics": false,
       "local_evidence_file": "outputs/prism_release_validation/20260913T143558Z/humanoid/trajectory_comparison.json"
     },
-    "training_provenance": "CPU tests cover output-directory exclusivity, checkpoint hash changes, resolved metadata identity and suite/dry-run execution boundaries; Python3.8 clean pinned import/config serialization checked without constructing a simulator."
+    "training_provenance": "CPU tests cover output-directory exclusivity, checkpoint hash changes, resolved metadata identity and suite/dry-run execution boundaries; Python3.8 clean pinned import/config serialization checked without constructing a simulator.",
+    "new_gated_actor": {
+      "actor_variant": "g1_gated_poly_v2",
+      "status": "passed: 17 combined Python3.8 CPU tests including legacy reference/checkpoint parity; real GPU PhysX PPO training for two updates, with learned alpha optimizer state and strict checkpoint roundtrip verified",
+      "main_actor_mean_parameters": 724876,
+      "main_total_actor_critic_parameters": 1123737,
+      "matched_larger_actor_mean_parameters": 724932,
+      "new_training_required": true,
+      "gate_init": 0.01,
+      "gate_shape": [
+        1,
+        256
+      ],
+      "warmup_ppo_updates": 0,
+      "checkpoint_version_buffer": "actor_variant_version=2",
+      "simulator_ppo": {
+        "seed": 1,
+        "num_envs": 2,
+        "ppo_updates": 2,
+        "rollout_steps_per_update": 60,
+        "control_steps_per_environment": 120,
+        "total_environment_transitions": 240,
+        "optimizer_steps_for_alpha": 16,
+        "alpha_shape": [
+          1,
+          256
+        ],
+        "max_abs_alpha_change": 0.004109983332455158,
+        "changed_alpha_features": 256,
+        "alpha_optimizer_first_moment_max_abs": 0.00018293493485543877,
+        "alpha_finite": true,
+        "warmup_buffer_present": false,
+        "checkpoint_sha256": "83922bdbc4ed2d9a78ab738037ff84cd14a488fe058b12afe80b21a277d09103",
+        "saved_iteration": 2,
+        "strict_checkpoint_roundtrip_exact": true,
+        "performance_claim": false,
+        "exit_code": 0,
+        "wall_seconds": 36.79841899100029,
+        "local_evidence_directory": "outputs/gated_g1_validation/20260913T174104Z"
+      }
+    }
   },
   "remaining": [
     "Longer matched-source trajectories across episode resets and training randomization (noisy/delayed actions, PD gains, friction/mass/pushes)",
     "Exact paper checkpoint/evaluation/seed aggregation mapping, including seeds3-5",
     "Exact low-friction/payload and fixed-command trace protocols",
     "Future-response ridge/OLS and split convention reconciliation"
+  ],
+  "legacy_actor_variants": [
+    "g1_residual_poly_v1"
   ]
 }

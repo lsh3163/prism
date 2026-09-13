@@ -6,7 +6,6 @@ import argparse
 from pathlib import Path
 
 from common import (
-    ACTOR_IDS,
     SUITES,
     Run,
     add_execution_args,
@@ -115,8 +114,9 @@ def build_run(args: argparse.Namespace, row: str) -> Run:
         {
             "policy": "diffusion",
             "profile": "prism" if row == "prism" else "baseline",
-            "actor_variant": ACTOR_IDS["diffusion"] if row == "prism" else None,
-            "architecture": "factorized_state" if row == "prism" else "nominal",
+            # Execution derives the exact gated/legacy variant from config.json.
+            "actor_variant": None,
+            "architecture": "from_checkpoint" if row == "prism" else "nominal",
             "action": "eval",
             "method": row,
             "suite": args.suite,

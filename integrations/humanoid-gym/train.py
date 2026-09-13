@@ -42,6 +42,7 @@ def main():
     from legged_gym import LEGGED_GYM_ROOT_DIR
     from legged_gym.utils import class_to_dict, get_args, get_load_path
     from legged_gym.utils.helpers import update_cfg_from_args
+    from checkpoints import validate_checkpoint
     from provenance import file_identity, training_manifest, write_training_manifest
 
     task_name = VARIANTS[wrapper.variant][0]
@@ -68,6 +69,7 @@ def main():
                 checkpoint=train_cfg.runner.checkpoint,
             )
         )
+        validate_checkpoint(Path(resume_checkpoint["path"]), class_to_dict(train_cfg))
     env, env_cfg = registry.make_env(task_name, args=args, env_cfg=env_cfg)
     runner, train_cfg = registry.make_alg_runner(env, task_name, args=args, train_cfg=train_cfg)
     manifest = training_manifest(

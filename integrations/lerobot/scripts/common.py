@@ -14,7 +14,8 @@ from pathlib import Path
 
 INTEGRATION_ROOT = Path(__file__).resolve().parents[1]
 SUITES = ("libero_spatial", "libero_object", "libero_goal", "libero_10")
-ACTOR_IDS = {"diffusion": "diffusion_factorized_state_v1", "smolvla": "smolvla_gated_quadratic_v1"}
+ACTOR_IDS = {"diffusion": "diffusion_gated_state_v2", "smolvla": "smolvla_gated_quadratic_v1"}
+DIFFUSION_LEGACY_ACTOR_ID = "diffusion_factorized_state_v1"
 
 
 class Run:
@@ -131,16 +132,24 @@ def checkpoint_metadata(path: Path, policy: str, profile: str | None) -> dict:
         if config.get("use_poly_compliance", False):
             raise ValueError(f"Action-residual checkpoints are excluded: {config_path}")
         prism = config.get("use_poly_kernel_conditioning", False)
+        actor_variant = None
         if prism:
             expected = {
                 "poly_kernel_source": "state",
-                "poly_kernel_lift_mode": "latent_quadratic",
                 "poly_kernel_latent_dim": 256,
                 "poly_kernel_hidden_dim": 256,
             }
             if any(config.get(key) != value for key, value in expected.items()):
-                raise ValueError(f"Expected the main state-factorized Diffusion actor: {config_path}")
-        architecture = "factorized_state" if prism else "nominal"
+                raise ValueError(f"Expected the released state-conditioning Diffusion actor: {config_path}")
+            # A missing mode remains legacy, matching the pinned dataclass. New
+            # gated runs always save an explicit mode; evaluation never overrides it.
+            mode = config.get("poly_kernel_lift_mode", "latent_quadratic")
+            if mode not in {"latent_quadratic", "gated_quadratic"}:
+                raise ValueError(f"Unsupported Diffusion checkpoint lift mode {mode!r}: {config_path}")
+            actor_variant = ACTOR_IDS[policy] if mode == "gated_quadratic" else DIFFUSION_LEGACY_ACTOR_ID
+            architecture = "gated_state" if mode == "gated_quadratic" else "factorized_state"
+        else:
+            architecture = "nominal"
     else:
         if any(key.startswith("poly_interaction") or key == "use_poly_interaction" for key in config):
             raise ValueError(f"Legacy SmolVLA interaction schema is not supported: {config_path}")
@@ -158,6 +167,7 @@ def checkpoint_metadata(path: Path, policy: str, profile: str | None) -> dict:
                 raise ValueError(
                     f"Expected the two-layer, RMSNorm gated-quadratic SmolVLA actor: {config_path}"
                 )
+        actor_variant = ACTOR_IDS[policy] if prism else None
     if profile is not None:
         expected_architecture = {"baseline": "linear", "larger": "mlp", "prism": "prism"}
         mismatch = (profile == "prism") != prism
@@ -170,7 +180,7 @@ def checkpoint_metadata(path: Path, policy: str, profile: str | None) -> dict:
         "config_sha256": sha256(config_path),
         "weights_sha256": sha256(weights),
         "weights_bytes": weights.stat().st_size,
-        "actor_variant": ACTOR_IDS[policy] if prism else None,
+        "actor_variant": actor_variant,
         "architecture": architecture,
         "auxiliary_files": {
             str(item.relative_to(path)): sha256(item)

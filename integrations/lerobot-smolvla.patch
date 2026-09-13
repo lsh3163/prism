@@ -2,10 +2,12 @@ diff --git a/src/lerobot/policies/smolvla/configuration_smolvla.py b/src/lerobot
 index 6d5288d..00e9d41 100644
 --- a/src/lerobot/policies/smolvla/configuration_smolvla.py
 +++ b/src/lerobot/policies/smolvla/configuration_smolvla.py
-@@ -70,6 +70,14 @@ class SmolVLAConfig(PreTrainedConfig):
+@@ -70,6 +70,16 @@ class SmolVLAConfig(PreTrainedConfig):
      train_expert_only: bool = True
      train_state_proj: bool = True
  
++    # Missing fields retain legacy checkpoint behavior. New PRISM training
++    # recipes explicitly select gated_quadratic and RMSNorm.
 +    # Proprioceptive state conditioner
 +    state_conditioner_type: str = "linear"  # linear | mlp | prism
 +    state_conditioner_hidden_dim: int | None = None
@@ -17,7 +19,7 @@ index 6d5288d..00e9d41 100644
      # Training presets
      optimizer_lr: float = 1e-4
      optimizer_betas: tuple[float, float] = (0.9, 0.95)
-@@ -119,6 +127,20 @@ class SmolVLAConfig(PreTrainedConfig):
+@@ -119,6 +129,20 @@ class SmolVLAConfig(PreTrainedConfig):
              raise NotImplementedError(
                  "`use_delta_joint_actions_aloha` is used by smolvla for aloha real models. It is not ported yet in LeRobot."
              )
@@ -42,7 +44,7 @@ diff --git a/src/lerobot/policies/smolvla/modeling_smolvla.py b/src/lerobot/poli
 index 8fd60c1..f4f19bd 100644
 --- a/src/lerobot/policies/smolvla/modeling_smolvla.py
 +++ b/src/lerobot/policies/smolvla/modeling_smolvla.py
-@@ -538,6 +538,81 @@ def pad_tensor(tensor, max_len, pad_value=0):
+@@ -538,6 +538,98 @@ def pad_tensor(tensor, max_len, pad_value=0):
      return padded_tensor
  
  
@@ -111,6 +113,23 @@ index 8fd60c1..f4f19bd 100644
 +            self.register_parameter("quadratic_scale", None)
 +        self.post_mlp = MLPStateConditioner(hidden_dim, output_dim, hidden_dim, num_layers)
 +
++    def _load_from_state_dict(
++        self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
++    ):
++        # Parent policy loaders may use strict=False. Never infer or discard a
++        # learned gate when the saved config and checkpoint disagree.
++        gate_key = prefix + "quadratic_scale"
++        expects_gate = self.quadratic_scale is not None
++        if (gate_key in state_dict) != expects_gate:
++            requirement = "requires" if expects_gate else "does not accept"
++            error_msgs.append(
++                f"PRISM product_mode={self.product_mode!r} {requirement} checkpoint key {gate_key!r}; "
++                "load the checkpoint with its original representation configuration."
++            )
++        super()._load_from_state_dict(
++            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
++        )
++
 +    def forward(self, state: Tensor) -> Tensor:
 +        left = self.left_proj(state)
 +        right = self.right_proj(state)
@@ -124,7 +143,7 @@ index 8fd60c1..f4f19bd 100644
  class VLAFlowMatching(nn.Module):
      """
      SmolVLA
-@@ -580,8 +655,34 @@ class VLAFlowMatching(nn.Module):
+@@ -580,8 +672,34 @@ class VLAFlowMatching(nn.Module):
              expert_width_multiplier=self.config.expert_width_multiplier,
              device=self.config.device if self.config.device is not None else "auto",
          )
@@ -161,7 +180,7 @@ index 8fd60c1..f4f19bd 100644
          )
          self.action_in_proj = nn.Linear(self.config.max_action_dim, self.vlm_with_expert.expert_hidden_size)
          self.action_out_proj = nn.Linear(self.vlm_with_expert.expert_hidden_size, self.config.max_action_dim)
-@@ -615,8 +716,9 @@ class VLAFlowMatching(nn.Module):
+@@ -615,8 +733,9 @@ class VLAFlowMatching(nn.Module):
          return self.config.rtc_config is not None and self.config.rtc_config.enabled
  
      def set_requires_grad(self):
@@ -173,7 +192,7 @@ index 8fd60c1..f4f19bd 100644
  
      def sample_noise(self, shape, device):
          noise = torch.normal(
-@@ -701,7 +803,7 @@ class VLAFlowMatching(nn.Module):
+@@ -701,7 +820,7 @@ class VLAFlowMatching(nn.Module):
          num_lang_embs = lang_emb.shape[1]
          att_masks += [0] * num_lang_embs
  

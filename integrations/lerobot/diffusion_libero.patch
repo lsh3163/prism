@@ -1,7 +1,7 @@
 diff --git a/src/lerobot/policies/diffusion/configuration_diffusion.py b/src/lerobot/policies/diffusion/configuration_diffusion.py
 --- a/src/lerobot/policies/diffusion/configuration_diffusion.py
 +++ b/src/lerobot/policies/diffusion/configuration_diffusion.py
-@@ -152,6 +152,36 @@
+@@ -152,6 +152,37 @@
      # Loss computation
      do_mask_loss_for_padding: bool = False
  
@@ -34,11 +34,12 @@ diff --git a/src/lerobot/policies/diffusion/configuration_diffusion.py b/src/ler
 +    poly_kernel_lift_mode: str = "latent_quadratic"
 +    poly_kernel_latent_dim: int = 256
 +    poly_kernel_hidden_dim: int = 256
++    poly_kernel_gate_scale_init: float = 0.01
 +
      # Training presets
      optimizer_lr: float = 1e-4
      optimizer_betas: tuple = (0.95, 0.999)
-@@ -162,6 +192,15 @@
+@@ -162,6 +193,15 @@
  
      def __post_init__(self):
          super().__post_init__()
@@ -47,8 +48,8 @@ diff --git a/src/lerobot/policies/diffusion/configuration_diffusion.py b/src/ler
 +            raise ValueError("This release contains representation conditioning; action-residual checkpoints are unsupported.")
 +        if self.poly_kernel_source not in {"global", "state"}:
 +            raise ValueError(f"Unsupported poly_kernel_source={self.poly_kernel_source!r}")
-+        if self.poly_kernel_lift_mode not in {"raw", "latent_quadratic"}:
-+            raise ValueError(f"Unsupported historical poly_kernel_lift_mode={self.poly_kernel_lift_mode!r}")
++        if self.poly_kernel_lift_mode not in {"raw", "latent_quadratic", "gated_quadratic"}:
++            raise ValueError(f"Unsupported poly_kernel_lift_mode={self.poly_kernel_lift_mode!r}")
 +        if self.poly_kernel_latent_dim < 1 or self.poly_kernel_hidden_dim < 1:
 +            raise ValueError("Polynomial kernel dimensions must be positive")
  
@@ -65,7 +66,7 @@ diff --git a/src/lerobot/policies/diffusion/modeling_diffusion.py b/src/lerobot/
  from ..utils import (
      get_device_from_parameters,
      get_dtype_from_parameters,
-@@ -194,7 +195,24 @@
+@@ -194,7 +195,25 @@
          if self.config.env_state_feature:
              global_cond_dim += self.config.env_state_feature.shape[0]
  
@@ -84,6 +85,7 @@ diff --git a/src/lerobot/policies/diffusion/modeling_diffusion.py b/src/lerobot/
 +                lift_mode=config.poly_kernel_lift_mode,
 +                latent_dim=config.poly_kernel_latent_dim,
 +                hidden_dim=config.poly_kernel_hidden_dim,
++                gate_init=config.poly_kernel_gate_scale_init,
 +            )
 +        else:
 +            self.poly_kernel_conditioner = None
@@ -91,7 +93,7 @@ diff --git a/src/lerobot/policies/diffusion/modeling_diffusion.py b/src/lerobot/
  
          if config.compile_model:
              # Compile the U-Net. "reduce-overhead" is preferred for the small-batch repetitive loops
-@@ -257,7 +275,10 @@
+@@ -257,7 +276,10 @@
      def _prepare_global_conditioning(self, batch: dict[str, Tensor]) -> Tensor:
          """Encode image features and concatenate them all together along with the state vector."""
          batch_size, n_obs_steps = batch[OBS_STATE].shape[:2]
@@ -103,7 +105,7 @@ diff --git a/src/lerobot/policies/diffusion/modeling_diffusion.py b/src/lerobot/
          # Extract image features.
          if self.config.image_features:
              if self.config.use_separate_rgb_encoder_per_camera:
-@@ -284,13 +305,16 @@
+@@ -284,13 +306,16 @@
                  img_features = einops.rearrange(
                      img_features, "(b s n) ... -> b s (n ...)", b=batch_size, s=n_obs_steps
                  )
