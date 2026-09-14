@@ -2,11 +2,11 @@
 
 import hashlib
 import json
-from datetime import datetime, timezone
-from pathlib import Path
 import platform
 import subprocess
 import sys
+from datetime import datetime, timezone
+from pathlib import Path
 
 
 def file_identity(path):
@@ -80,23 +80,34 @@ def training_manifest(variant, task, command, args, env_config, train_config, ru
     policy = train_config["policy"]
     policy_class = train_config["runner"]["policy_class_name"]
     is_gated = policy_class == "GatedPolyActorCritic"
-    is_polynomial = is_gated or policy_class == "PolyActorCritic"
+    is_residual_gated = policy_class == "ResidualLearnedGateActorCritic"
+    is_polynomial = is_gated or is_residual_gated or policy_class == "PolyActorCritic"
     actor_identity = {
         "actor_variant": "g1_gated_poly_v2"
         if is_gated
-        else ("g1_residual_poly_v1" if is_polynomial else None),
+        else (
+            "g1_residual_learned_gate_v1"
+            if is_residual_gated
+            else ("g1_residual_poly_v1" if is_polynomial else None)
+        ),
         "policy_type": "gated_polynomial"
         if is_gated
-        else ("residual_polynomial" if is_polynomial else "mlp"),
+        else (
+            "residual_learned_gate_diagnostic"
+            if is_residual_gated
+            else ("residual_polynomial" if is_polynomial else "mlp")
+        ),
         "recipe_variant": variant,
         "class": policy_class,
         "actor_hidden_dims": policy["actor_hidden_dims"],
         "polynomial_degree": policy.get("poly_degree") if is_polynomial else None,
         "warmup_ppo_updates": policy.get("actor_poly_warmup_updates", 0) if is_polynomial else None,
         "gate_semantics": "learned_per_feature"
-        if is_gated
+        if is_gated or is_residual_gated
         else ("legacy_scalar_scale" if is_polynomial else None),
-        "gate_init": policy.get("gate_init", 0.01) if is_gated else None,
+        "gate_init": policy.get("gate_init", 1.0 if is_residual_gated else 0.01)
+        if is_gated or is_residual_gated
+        else None,
     }
     model = getattr(getattr(runner, "alg", None), "actor_critic", None)
     if model is not None:
@@ -108,6 +119,17 @@ def training_manifest(variant, task, command, args, env_config, train_config, ru
         actor_identity["total_actor_critic_parameters"] = sum(
             parameter.numel() for parameter in model.parameters()
         )
+        # The residual alpha control must start with exactly the same existing
+        # weights, including critic and exploration std, as its legacy pair.
+        if policy_class in {"PolyActorCritic", "ResidualLearnedGateActorCritic"}:
+            shared = hashlib.sha256()
+            for name, parameter in sorted(model.named_parameters()):
+                if name == "actor_encoder.interaction_scales":
+                    continue
+                values = parameter.detach().cpu().contiguous()
+                shared.update(json.dumps([name, str(values.dtype), list(values.shape)]).encode())
+                shared.update(values.numpy().tobytes())
+            actor_identity["initial_shared_parameter_sha256"] = shared.hexdigest()
     versions = {"python": platform.python_version(), "executable": sys.executable}
     for name in ("torch", "numpy", "isaacgym", "rsl_rl"):
         module = modules.get(name)

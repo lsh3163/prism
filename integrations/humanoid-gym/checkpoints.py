@@ -12,6 +12,7 @@ def actor_variant(policy_class: str) -> Optional[str]:
         "ActorCritic": None,
         "PolyActorCritic": "g1_residual_poly_v1",
         "GatedPolyActorCritic": "g1_gated_poly_v2",
+        "ResidualLearnedGateActorCritic": "g1_residual_learned_gate_v1",
     }
     if policy_class not in identities:
         raise ValueError("Unknown G1 policy class: " + policy_class)
@@ -40,10 +41,31 @@ def validate_state_schema(state: Mapping[str, Tensor], train_config: dict) -> Op
             raise ValueError("Gated checkpoint alpha shape differs from the selected recipe")
         if degree == 1 and scales is not None:
             raise ValueError("Degree-one checkpoints must not contain interaction gates")
-    elif expected == "g1_residual_poly_v1":
+    elif expected in {"g1_residual_poly_v1", "g1_residual_learned_gate_v1"}:
         required = {"actor_encoder.raw_proj.weight", "actor_encoder.poly_scale", "actor_poly_warmup_step"}
-        if marker is not None or not required.issubset(state):
+        if expected == "g1_residual_learned_gate_v1":
+            if policy.get("actor_poly_warmup_updates") != 500 or policy.get("gate_init") != 1.0:
+                raise ValueError("Residual gate control requires 500-update warmup and gate_init=1.0")
+            valid_marker = (
+                isinstance(marker, Tensor)
+                and marker.shape == torch.Size([])
+                and marker.dtype == torch.long
+                and marker.item() == 3
+            )
+            scales = state.get("actor_encoder.interaction_scales")
+            shape = (policy["poly_degree"] - 1, policy["poly_hidden_dim"])
+            if (
+                not valid_marker
+                or not isinstance(scales, Tensor)
+                or tuple(scales.shape) != shape
+                or not torch.is_floating_point(scales)
+                or not bool(torch.isfinite(scales).all())
+            ):
+                raise ValueError("Expected the diagnostic residual learned-gate checkpoint schema")
+        elif marker is not None or "actor_encoder.interaction_scales" in state:
             raise ValueError("Expected historical g1_residual_poly_v1; select its explicit legacy-* recipe")
+        if not required.issubset(state):
+            raise ValueError("Residual checkpoints require the retained raw path and warmup state")
         warmup = policy.get("actor_poly_warmup_updates", 0)
         step = int(state["actor_poly_warmup_step"].item())
         scale = float(state["actor_encoder.poly_scale"].item())

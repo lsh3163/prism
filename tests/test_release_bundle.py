@@ -24,6 +24,10 @@ class ReleaseBundleTest(unittest.TestCase):
         scripts = (
             "integrations/humanoid-gym/train.py",
             "integrations/humanoid-gym/run_suite.py",
+            "integrations/humanoid-gym/run_main_table.py",
+            "integrations/humanoid-gym/run_residual_gate_controls.py",
+            "integrations/humanoid-gym/run_capacity_controls.py",
+            "integrations/humanoid-gym/build_main_table.py",
             "integrations/humanoid-gym/verify_environment.py",
             "integrations/bfm-zero/evaluate_scenarios.py",
             "validation/checkpoint_inventory.py",

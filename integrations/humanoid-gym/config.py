@@ -320,6 +320,18 @@ class G1HumanoidGymCfgPPOPolyWarmup(G1HumanoidGymCfgPPOPoly):
         experiment_name = "g1_humanoidgym_ppo_poly_warmup"
 
 
+class G1HumanoidGymCfgPPOResidualLearnedGate(G1HumanoidGymCfgPPOPolyWarmup):
+    """Diagnostic control: preserve the legacy actor and learn interaction scales."""
+
+    class policy(G1HumanoidGymCfgPPOPolyWarmup.policy):
+        actor_variant = "g1_residual_learned_gate_v1"
+        gate_init = 1.0
+
+    class runner(G1HumanoidGymCfgPPOPolyWarmup.runner):
+        policy_class_name = "ResidualLearnedGateActorCritic"
+        experiment_name = "g1_humanoidgym_ppo_residual_learned_gate"
+
+
 class G1HumanoidGymCfgPPOLarger(G1HumanoidGymCfgPPO):
     """MLP control within 0.01% of the new degree-two gated actor parameter count."""
 
@@ -358,3 +370,41 @@ class G1HumanoidGymCfgPPOGatedD3(G1HumanoidGymCfgPPOGated):
 
     class runner(G1HumanoidGymCfgPPOGated.runner):
         experiment_name = "g1_humanoidgym_ppo_gated_d3"
+
+
+class G1HumanoidGymCfgPPOGated1321(G1HumanoidGymCfgPPOGated):
+    """Capacity control: the shared gated-v2 formula at approximately 1.321M."""
+
+    class policy(G1HumanoidGymCfgPPOGated.policy):
+        poly_hidden_dim = 334
+        actor_hidden_dims = [513, 256, 128]
+
+    class runner(G1HumanoidGymCfgPPOGated.runner):
+        experiment_name = "g1_humanoidgym_ppo_gated_1321k"
+
+
+class G1HumanoidGymCfgPPOMatched1321(G1HumanoidGymCfgPPOParamMatched):
+    """MLP with a trainable parameter count matched to the 1.321M gated actor."""
+
+    class runner(G1HumanoidGymCfgPPOParamMatched.runner):
+        experiment_name = "g1_humanoidgym_ppo_mlp_1321k"
+
+
+class G1HumanoidGymCfgPPOWide1500(G1HumanoidGymCfgPPO):
+    """Three-hidden-layer MLP with more parameters than the 1.321M gated actor."""
+
+    class policy(G1HumanoidGymCfgPPO.policy):
+        actor_hidden_dims = [928, 384, 224]
+
+    class runner(G1HumanoidGymCfgPPO.runner):
+        experiment_name = "g1_humanoidgym_ppo_mlp_wide_1500k"
+
+
+class G1HumanoidGymCfgPPODeep1500(G1HumanoidGymCfgPPO):
+    """Four-hidden-layer MLP matched to the larger three-hidden-layer control."""
+
+    class policy(G1HumanoidGymCfgPPO.policy):
+        actor_hidden_dims = [768, 512, 256, 128]
+
+    class runner(G1HumanoidGymCfgPPO.runner):
+        experiment_name = "g1_humanoidgym_ppo_mlp_deep_1500k"

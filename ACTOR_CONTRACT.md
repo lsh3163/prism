@@ -40,6 +40,7 @@ The formulas describe the representation stage, followed by the policy backbone.
 | `g1_gated_poly_v2` (default) | Shared gated recurrence; `z=ELU(O(phi_K))`, then actor MLP | [G1 gated actor](integrations/humanoid-gym/gated_actor.py): `actor_encoder.factors`, `actor_encoder.interaction_scales`, `actor_encoder.projection`, and version buffer; no warmup buffers. |
 | `diffusion_gated_state_v2` (default) | `u=LayerNorm(x)`; `p=A_1(u)*(1+alpha*A_2(u))`; latent LayerNorm then SiLU MLP | [Diffusion conditioner](integrations/lerobot/diffusion_conditioner.py): adds learned `quadratic_scale` to the state conditioner. |
 | `g1_residual_poly_v1` | `h=P(x)`; `p_1=A_0(h)`; `p_k=p_(k-1)+A_(k-1)(h)*S_(k-2)(p_(k-1))`; `z=ELU(R(x)+s*O(p_K))` | [G1 actor](integrations/humanoid-gym/actor.py): preserve encoder, actor MLP, `poly_scale`, and `actor_poly_warmup_step`. |
+| `g1_residual_learned_gate_v1` (diagnostic only) | Retained residual recurrence with learned `alpha` multiplying only each interaction term, initialized to 1; retained raw path and 500-update warmup | [Residual gate control](integrations/humanoid-gym/RESIDUAL_GATE_CONTROL.md); marker 3 and separate checkpoint schema. This control is not the default shared gated recurrence. |
 | `diffusion_factorized_state_v1` | `u=LayerNorm(x)`; `p=A_1(u)*A_2(u)`; latent LayerNorm then SiLU MLP | [Diffusion conditioner](integrations/lerobot/diffusion_conditioner.py): preserve `input_norm`, `left_proj`, `right_proj`, and `net` keys. |
 | `smolvla_gated_quadratic_v1` | `p=A_1(x)*(1+alpha*A_2(x))`; SiLU MLP then output RMSNorm | [SmolVLA patch](integrations/lerobot-smolvla.patch): preserve `left_proj`, `right_proj`, `quadratic_scale`, and external `state_output_norm`. |
 | `bfm_history_gated_quadratic_v1` | Same gated product; Mish MLP and RMSNorm on `history_actor` | [BFM-Zero patch](integrations/bfm-zero.patch): keep other actor inputs and their concatenation unchanged. |
@@ -54,11 +55,14 @@ stage.
 ## Interfaces to preserve
 
 - **G1:** 705 actor inputs (15×47), 219 privileged critic inputs (3×73),
-  12 joint-target actions, and a 256-wide encoder. The `prism` recipe uses
+  12 joint-target actions, and a 256-wide encoder in the default recipe. The `prism` recipe uses
   gated degree 2 with no scheduled warmup. The degree-1/2/3 recipes share that
   recurrence. `legacy-prism` retains 500 PPO updates of scalar scale warmup;
   legacy degree ablations use fixed scale 1. Keep privileged observations
-  confined to the critic.
+  confined to the critic. The optional `prism-1321k` capacity recipe uses the
+  same gated recurrence with width 334 and actor layers 513/256/128; select
+  its exact configuration when loading its checkpoints. Its [capacity comparison](integrations/humanoid-gym/CAPACITY_COMPARISON.md)
+  keeps the critic fixed and reports matched, wider, and deeper MLP controls.
 - **Diffusion:** two observations with eight state coordinates each; the main
   conditioner maps 16 state-history values through 256 latent factors back to
   16 values. Flatten state, image, and optional environment histories separately,

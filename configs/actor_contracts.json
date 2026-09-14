@@ -53,6 +53,35 @@
       "compatibility_note": "Main comparison and fixed degree-2 ablation use different warmup settings.",
       "status": "legacy; retained for historical checkpoints and explicit recipes"
     },
+    "g1_residual_learned_gate_v1": {
+      "status": "diagnostic only; preserves the historical residual actor, not the default shared gated recurrence",
+      "source": "integrations/humanoid-gym/residual_gated_actor.py",
+      "class": "ResidualLearnedGateActorCritic",
+      "representation_class": "ResidualLearnedGateEncoder",
+      "recipe_variant": "residual-learned-gate",
+      "input_dim": 705,
+      "critic_input_dim": 219,
+      "output_dim": 12,
+      "representation_dim": 256,
+      "degree": 2,
+      "actor_hidden_dims": [512, 256, 128],
+      "critic_hidden_dims": [768, 256, 128],
+      "activation": "elu",
+      "gate_init": 1.0,
+      "warmup_ppo_updates": 500,
+      "gate_semantics": "Unconstrained learned per-feature alpha multiplying each residual interaction term; initial shared weights and forward function match the legacy actor.",
+      "main_actor_mean_parameters": 922252,
+      "main_total_actor_critic_parameters": 1321113,
+      "checkpoint_version": 3,
+      "checkpoint_keys": [
+        "actor_variant_version",
+        "actor_encoder.interaction_scales",
+        "actor_encoder.raw_proj.weight",
+        "actor_encoder.poly_scale",
+        "actor_poly_warmup_step"
+      ],
+      "compatibility_note": "Explicit diagnostic schema; legacy and default gated checkpoints are rejected. Historical results do not measure this learned-gate control."
+    },
     "diffusion_factorized_state_v1": {
       "source": "integrations/lerobot/diffusion_conditioner.py",
       "class": "PolynomialKernelConditioner",
@@ -177,6 +206,17 @@
       "projection": "Linear(256,256) followed by ELU; no historical raw residual skip",
       "main_actor_mean_parameters": 724876,
       "main_total_actor_critic_parameters": 1123737,
+      "capacity_variant": {
+        "recipe_variant": "prism-1321k",
+        "representation_dim": 334,
+        "actor_hidden_dims": [513, 256, 128],
+        "gate_init": 0.01,
+        "warmup_ppo_updates": 0,
+        "projection": "Linear(334,334) followed by ELU",
+        "actor_mean_parameters": 921715,
+        "total_actor_critic_parameters": 1320576,
+        "note": "Same gated recurrence with wider latent features and a one-unit first actor-layer adjustment. Requires its own recipe and freshly trained checkpoint."
+      },
       "larger_actor_hidden_dims": [
         648,
         328,

@@ -1,21 +1,25 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # Derived from the local Unitree RL Gym experiment scripts; see SOURCE_MANIFEST.json.
 # Upstream notices are retained in LICENSE.unitree and LICENSE.rsl-rl.
-"""Historical nominal/plane evaluation; protocol mapping to paper tables is unresolved."""
+"""G1 evaluation with equal episode quotas and explicit historical compatibility."""
 
 import copy
+import hashlib
 import json
 import os
+import platform
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import isaacgym  # noqa: F401  # Required before torch imports.
 import numpy as np
 import torch
-from isaacgym import gymutil
-
-from legged_gym import LEGGED_GYM_ROOT_DIR
 from checkpoints import actor_variant, validate_checkpoint
-from provenance import file_identity
+from evaluation_protocol import PROTOCOL_IDS, BeforeResetCapture, EpisodeCollector, episode_quotas
+from isaacgym import gymutil
+from legged_gym import LEGGED_GYM_ROOT_DIR
+from provenance import file_identity, source_snapshot
 from runtime import VARIANTS, register_tasks
 
 task_registry = register_tasks()
@@ -35,6 +39,7 @@ def get_eval_args():
         {"name": "--episodes", "type": int, "default": 200},
         {"name": "--num_envs", "type": int, "default": 100},
         {"name": "--seed", "type": int, "default": 1},
+        {"name": "--evaluation_protocol", "type": str, "default": "balanced", "choices": list(PROTOCOL_IDS)},
         {"name": "--condition_name", "type": str, "default": "match_nopush"},
         {"name": "--terrain_mode", "type": str, "default": "match"},
         {"name": "--push_mode", "type": str, "default": "off"},
@@ -57,6 +62,9 @@ def get_eval_args():
     args.max_iterations = None
     args.resume = False
     args.run_name = None
+    episode_quotas(args.episodes, args.num_envs, args.evaluation_protocol)
+    if args.seed < 0:
+        raise ValueError("Evaluation requires an explicit nonnegative seed")
     if args.variant is not None and args.variant not in VARIANTS:
         raise ValueError("Unknown recipe --variant=" + args.variant)
     if args.task is None:
@@ -155,6 +163,35 @@ def load_eval_bundle(args):
         load_run=args.load_run,
         checkpoint=args.checkpoint,
     )
+    checkpoint_identity = file_identity(checkpoint_path)
+    checkpoint_path = checkpoint_identity["path"]
+    manifest_path = Path(checkpoint_path).parent / "prism_run_manifest.json"
+    training_manifest = None
+    if manifest_path.is_file():
+        manifest_bytes = manifest_path.read_bytes()
+        manifest_payload = json.loads(manifest_bytes)
+        if (
+            not isinstance(manifest_payload, dict)
+            or manifest_payload.get("schema_version") != 1
+            or manifest_payload.get("record_kind") != "training_start"
+        ):
+            raise ValueError("Unrecognized sibling training manifest: " + str(manifest_path))
+        training_seed = manifest_payload.get("seed")
+        if isinstance(training_seed, bool) or not isinstance(training_seed, int) or training_seed < 0:
+            raise ValueError("Training manifest has no explicit nonnegative training seed")
+        manifest_actor = manifest_payload.get("actor", {})
+        if (
+            not isinstance(manifest_actor, dict)
+            or manifest_payload.get("task") != args.task
+            or manifest_actor.get("class") != train_cfg.runner.policy_class_name
+            or manifest_actor.get("actor_variant") != actor_variant(train_cfg.runner.policy_class_name)
+        ):
+            raise ValueError("Training manifest task/actor does not match the selected evaluation recipe")
+        training_manifest = {
+            "path": str(manifest_path.resolve()),
+            "sha256": hashlib.sha256(manifest_bytes).hexdigest(),
+            "payload": manifest_payload,
+        }
     validate_checkpoint(Path(checkpoint_path), class_to_dict(train_cfg))
 
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
@@ -164,6 +201,41 @@ def load_eval_bundle(args):
     )
     runner.load(checkpoint_path, load_optimizer=False)
     policy = runner.get_inference_policy(device=env.device)
+    if file_identity(checkpoint_path) != checkpoint_identity:
+        raise RuntimeError("Checkpoint changed while it was being loaded")
+    model = runner.alg.actor_critic
+    actor_identity = {
+        "class": type(model).__name__,
+        "actor_variant": actor_variant(train_cfg.runner.policy_class_name),
+        "actor_mean_parameters": sum(
+            parameter.numel()
+            for name, parameter in model.named_parameters()
+            if name.startswith(("actor_encoder.", "actor."))
+        ),
+        "total_actor_critic_parameters": sum(parameter.numel() for parameter in model.parameters()),
+    }
+    provenance = {
+        "training_manifest": training_manifest,
+        "training_seed": training_manifest["payload"].get("seed") if training_manifest else None,
+        "checkpoint": checkpoint_identity,
+        "checkpoint_iteration": int(runner.current_learning_iteration),
+        "evaluation_seed": args.seed,
+        "evaluation_config": class_to_dict(env.cfg),
+        "evaluation_arguments": {
+            key: str(value) if key == "physics_engine" else value for key, value in vars(args).items()
+        },
+        "actor": actor_identity,
+        "runtime": {
+            "python": platform.python_version(),
+            "executable": sys.executable,
+            "torch": torch.__version__,
+            "numpy": np.__version__,
+            "isaacgym": str(getattr(isaacgym, "__version__", "not exposed")),
+            "torch_cuda": torch.version.cuda,
+            "device": str(env.device),
+        },
+        "source": source_snapshot(Path(__file__).parent, dict(sys.modules)),
+    }
 
     return {
         "task": args.task,
@@ -172,74 +244,89 @@ def load_eval_bundle(args):
         "runner": runner,
         "policy": policy,
         "actor_variant": actor_variant(train_cfg.runner.policy_class_name),
-        "checkpoint_sha256": file_identity(checkpoint_path)["sha256"],
+        "checkpoint_sha256": checkpoint_identity["sha256"],
+        "checkpoint_iteration": int(runner.current_learning_iteration),
+        "provenance": provenance,
     }
 
 
-def evaluate_bundle(bundle, num_episodes):
+def evaluate_bundle(bundle, num_episodes, evaluation_protocol="balanced"):
     env = bundle["env"]
     policy = bundle["policy"]
     obs = env.get_observations()
+    collector = EpisodeCollector(
+        env.num_envs, num_episodes, int(env.max_episode_length), evaluation_protocol, float(env.dt)
+    )
+    initial_episode_steps = env.episode_length_buf.detach().cpu().tolist()
 
     cur_return = torch.zeros(env.num_envs, device=env.device)
     cur_length = torch.zeros(env.num_envs, device=env.device)
     cur_lin_error_sum = torch.zeros(env.num_envs, device=env.device)
     cur_yaw_error_sum = torch.zeros(env.num_envs, device=env.device)
 
-    episode_returns = []
-    episode_lengths = []
-    episode_lin_errors = []
-    episode_yaw_errors = []
-    episode_success = []
+    def capture_step_metrics():
+        # Called for all environments after reward/termination computation and
+        # before reset_idx changes commands, velocities, or episode bookkeeping.
+        return (
+            torch.norm(env.commands[:, :2] - env.base_lin_vel[:, :2], dim=1),
+            torch.abs(env.commands[:, 2] - env.base_ang_vel[:, 2]),
+            env.time_out_buf.clone(),
+        )
 
-    while len(episode_returns) < num_episodes:
-        with torch.no_grad():
-            actions = policy(obs.detach())
-            obs, _, rewards, dones, _ = env.step(actions.detach())
+    step = 0
+    max_steps = (max(collector.quotas) if collector.quotas else num_episodes) * (
+        int(env.max_episode_length) + 1
+    )
+    with BeforeResetCapture(env, capture_step_metrics) as capture:
+        while not collector.complete:
+            if step >= max_steps:
+                raise RuntimeError("Environment did not complete the requested episodes within its horizon")
+            step += 1
+            capture.begin_step()
+            with torch.no_grad():
+                actions = policy(obs.detach())
+                obs, _, rewards, dones, _ = env.step(actions.detach())
+            lin_error, yaw_error, timeouts = capture.snapshot()
+            if evaluation_protocol == "legacy-pooled":
+                lin_error = torch.norm(env.commands[:, :2] - env.base_lin_vel[:, :2], dim=1)
+                yaw_error = torch.abs(env.commands[:, 2] - env.base_ang_vel[:, 2])
 
-        lin_error = torch.norm(env.commands[:, :2] - env.base_lin_vel[:, :2], dim=1)
-        yaw_error = torch.abs(env.commands[:, 2] - env.base_ang_vel[:, 2])
+            cur_return += rewards
+            cur_length += 1
+            cur_lin_error_sum += lin_error
+            cur_yaw_error_sum += yaw_error
+            done_ids = (dones > 0).nonzero(as_tuple=False).squeeze(-1)
+            # Process the complete batch, including terminal events after the
+            # legacy pool fills; the collector records whether each was counted.
+            for idx in done_ids.tolist():
+                episode_length = int(cur_length[idx].item())
+                collector.add_episode(
+                    env_id=idx,
+                    completion_step=step,
+                    length=episode_length,
+                    episode_return=float(cur_return[idx].item()),
+                    avg_lin_vel_error=float((cur_lin_error_sum[idx] / episode_length).item()),
+                    avg_yaw_vel_error=float((cur_yaw_error_sum[idx] / episode_length).item()),
+                    timeout=bool(timeouts[idx].item()),
+                )
+            cur_return[done_ids] = 0
+            cur_length[done_ids] = 0
+            cur_lin_error_sum[done_ids] = 0
+            cur_yaw_error_sum[done_ids] = 0
 
-        cur_return += rewards
-        cur_length += 1
-        cur_lin_error_sum += lin_error
-        cur_yaw_error_sum += yaw_error
-
-        done_ids = (dones > 0).nonzero(as_tuple=False).squeeze(-1)
-        if done_ids.numel() == 0:
-            continue
-
-        for idx in done_ids.tolist():
-            episode_length = cur_length[idx].item()
-            episode_returns.append(cur_return[idx].item())
-            episode_lengths.append(episode_length)
-            episode_lin_errors.append((cur_lin_error_sum[idx] / max(cur_length[idx], 1)).item())
-            episode_yaw_errors.append((cur_yaw_error_sum[idx] / max(cur_length[idx], 1)).item())
-            episode_success.append(float(episode_length >= env.max_episode_length - 1))
-            if len(episode_returns) >= num_episodes:
-                break
-
-        cur_return[done_ids] = 0
-        cur_length[done_ids] = 0
-        cur_lin_error_sum[done_ids] = 0
-        cur_yaw_error_sum[done_ids] = 0
-
-    return {
-        "task": bundle["task"],
-        "checkpoint_path": bundle["checkpoint_path"],
-        "actor_variant": bundle.get("actor_variant"),
-        "checkpoint_sha256": bundle.get("checkpoint_sha256"),
-        "num_episodes": len(episode_returns),
-        "avg_return": float(np.mean(episode_returns)),
-        "std_return": float(np.std(episode_returns)),
-        "avg_episode_length": float(np.mean(episode_lengths)),
-        "std_episode_length": float(np.std(episode_lengths)),
-        "avg_lin_vel_error": float(np.mean(episode_lin_errors)),
-        "std_lin_vel_error": float(np.std(episode_lin_errors)),
-        "avg_yaw_vel_error": float(np.mean(episode_yaw_errors)),
-        "std_yaw_vel_error": float(np.std(episode_yaw_errors)),
-        "success_rate": float(np.mean(episode_success)),
-    }
+    result = collector.summary()
+    result.update(
+        {
+            "task": bundle["task"],
+            "checkpoint_path": bundle["checkpoint_path"],
+            "actor_variant": bundle.get("actor_variant"),
+            "checkpoint_sha256": bundle.get("checkpoint_sha256"),
+            "checkpoint_iteration": bundle.get("checkpoint_iteration"),
+            "evaluation_steps": step,
+            "initial_env_episode_steps": initial_episode_steps,
+        }
+    )
+    return result
 
 
 def print_summary(args, result):
@@ -248,6 +335,7 @@ def print_summary(args, result):
     print(f"Task:                   {result['task']}")
     print(f"Checkpoint:             {result['checkpoint_path']}")
     print(f"Condition:              {args.condition_name}")
+    print(f"Protocol:               {result['protocol_id']}")
     print(f"Episodes:               {result['num_episodes']}")
     print(f"Average return:         {result['avg_return']:.4f}")
     print(f"Average episode length: {result['avg_episode_length']:.4f}")
@@ -257,12 +345,15 @@ def print_summary(args, result):
     print("========================================")
 
 
-def maybe_save_results(args, result):
+def maybe_save_results(args, result, bundle=None):
     if args.save_path is None:
         return
 
     payload = {
+        "schema_version": 2,
         "metadata": {
+            **(bundle.get("provenance", {}) if bundle else {}),
+            "created_utc": datetime.now(timezone.utc).isoformat(),
             "variant_name": args.variant_name,
             "recipe_variant": getattr(args, "variant", None),
             "actor_variant": result.get("actor_variant"),
@@ -272,8 +363,11 @@ def maybe_save_results(args, result):
             "push_interval_s": args.push_interval_s,
             "max_push_vel_xy": args.max_push_vel_xy,
             "seed": args.seed,
+            "evaluation_seed": args.seed,
             "episodes": args.episodes,
-            "num_envs": args.num_envs,
+            "num_envs": result["num_envs"],
+            "protocol_id": result["protocol_id"],
+            "evaluation_protocol": result["protocol"],
         },
         "result": result,
     }
@@ -283,7 +377,8 @@ def maybe_save_results(args, result):
     if save_dir:
         os.makedirs(save_dir, exist_ok=True)
     with open(save_path, "x", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2)
+        json.dump(payload, handle, indent=2, allow_nan=False)
+        handle.write("\n")
     print(f"Saved evaluation results to: {save_path}")
 
 
@@ -304,10 +399,12 @@ def close_bundle(bundle):
 
 def main(args):
     bundle = load_eval_bundle(args)
-    result = evaluate_bundle(bundle, args.episodes)
-    print_summary(args, result)
-    maybe_save_results(args, result)
-    close_bundle(bundle)
+    try:
+        result = evaluate_bundle(bundle, args.episodes, args.evaluation_protocol)
+        print_summary(args, result)
+        maybe_save_results(args, result, bundle=bundle)
+    finally:
+        close_bundle(bundle)
 
 
 if __name__ == "__main__":

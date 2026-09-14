@@ -15,6 +15,18 @@ keys in `actor.py`. Select them explicitly with `legacy-prism` or a
 `legacy-degree*` recipe. Old checkpoints are rejected by the new actor; no
 weight conversion or equivalence between these variants is implied.
 
+The separate [residual gate control](RESIDUAL_GATE_CONTROL.md) compares
+`legacy-prism` with `residual-learned-gate` while preserving the historical
+encoder, initial shared weights, raw path and 500-update warmup. Its alpha starts
+at 1 and gates only the residual interaction term. This diagnostic is not the
+default shared gated architecture or a substitute for its benchmark results.
+
+The [capacity comparison](CAPACITY_COMPARISON.md) expands the same gated-v2
+formula to approximately 1.321M total parameters (`prism-1321k`). It compares
+that actor with a matched MLP (`mlp-1321k`) and approximately 1.500M wide/deep
+MLPs (`mlp-wide-1500k`, `mlp-deep-1500k`), retaining the same critic and PPO
+budget. These optional recipes have a separate four-method, five-seed report.
+
 ## Source and validation status
 
 - New gated actors pass degree-three polynomial/gradient checks, learned-alpha
@@ -160,9 +172,10 @@ Before the first PPO rollout, `train.py` writes `prism_run_manifest.json` beside
 the future checkpoints. It records the resolved environment/training seed and
 configurations, actor identity and degree/warmup, command, runtime versions,
 imported source hashes, available git revisions, and any resumed checkpoint's
-SHA-256. New PRISM runs use `g1_gated_poly_v2`; explicit legacy PRISM runs use
-`g1_residual_poly_v1`. MLP controls have a null PRISM actor
-identifier and retain their `baseline` or `larger` recipe name. Keep this file
+SHA-256. The default and capacity PRISM recipes use `g1_gated_poly_v2`;
+explicit legacy PRISM runs use `g1_residual_poly_v1`, and the residual learned-gate
+diagnostic uses `g1_residual_learned_gate_v1`. MLP controls have a null PRISM actor
+identifier and retain their selected recipe name. Keep this file
 with checkpoints when moving or sharing a run. It records training inputs,
 not evidence that training completed or reproduced a paper result. It is not
 a complete dependency lock or robot-asset archive.
@@ -239,11 +252,21 @@ features are the raw multiplicative features before projection; `combined` and
 `encoder` use the projected ELU representation. Historical feature definitions
 are retained under the explicit legacy choice.
 
-The historical evaluator disables observation noise and friction/mass
-randomization, delayed/noisy actions, and pushes by default. Survival means
-reaching the episode time limit. Linear tracking error is mean planar
-velocity-error norm; yaw error is mean absolute yaw-rate error. It retains the
-original post-step metric timing, including the environment's automatic resets.
+Nominal evaluation disables observation noise and friction/mass randomization,
+delayed/noisy actions, and pushes. Initial states and velocity/heading commands
+remain randomized. The default `--evaluation_protocol=balanced` assigns an equal
+episode quota to each environment: 200 episodes with 100 environments means the
+first two completed episodes from each. Survival requires reaching the actual
+time limit, and terminal-step tracking errors are captured before automatic
+reset. Linear error is the mean planar velocity-error norm; yaw error is the
+mean absolute yaw-rate error. Result JSON retains the protocol, individual
+episodes, checkpoint identity, and available training provenance.
+
+Use `--evaluation_protocol=legacy-pooled` only to reproduce historical tables.
+That protocol takes the first completed episodes across all environments, uses
+the old length-based survival threshold, and retains post-reset metric timing.
+It can overrepresent repeated early failures. Do not combine its results with
+the balanced protocol when computing a table.
 The extracted task supports the paper plane terrain; rough-terrain experiments
 are not represented as equivalent evaluations.
 
@@ -254,6 +277,57 @@ implementation (`--ridge=10` by default). This is not yet reconciled with the
 paper's stated OLS protocol. Its slip target is contact-weighted planar foot
 speed and power is the sum of absolute joint torque × velocity. Review the
 target/window construction in the script before comparing it to a paper row.
+
+## Five-seed main table with learned alpha
+
+See [MAIN_TABLE.md](MAIN_TABLE.md) for the complete input schema and evidence checks.
+
+`run_main_table.py` registers exactly three methods (`baseline`, `larger`, and
+new gated `prism`) with independent training seeds 1–5. Every run starts fresh
+and uses 4,096 training environments and 3,001 PPO updates. Each final
+checkpoint is evaluated with the shared evaluation seeds 101–103, with 200
+episodes per evaluation and 100 parallel environments: 600 evaluation episodes
+per trained policy. The evaluator uses `g1_balanced_timeout_v2` throughout.
+
+The total trainable parameter counts, including the critic and Gaussian action
+standard deviation, are 926,105 for MLP, 1,123,793 for Larger MLP, and 1,123,737
+for gated PRISM. Thus the two larger models are reported as **1.124M**, replacing
+the historical residual model's 1.321M. Alpha is a learned parameter initialized
+to 0.01; its optimizer membership, updates, and final statistics are recorded.
+
+Prepare a fresh output directory after validating the simulator environment:
+
+```bash
+uv run --no-project --python "$GYM_PYTHON" python "$GYM_CODE/run_main_table.py" \
+  --output-dir "$PRISM_ROOT/outputs/g1_main_five_seeds" \
+  --python "$GYM_PYTHON" --unitree-root /path/to/unitree_rl_gym \
+  --rsl-root /path/to/rsl_rl --prepare
+
+uv run --no-project --python "$GYM_PYTHON" python \
+  "$PRISM_ROOT/outputs/g1_main_five_seeds/source/integration/run_main_table.py" \
+  --output-dir "$PRISM_ROOT/outputs/g1_main_five_seeds" --execute
+```
+
+Preparation copies the integration and upstream source/resources into the
+output directory and records their hashes. Execution uses that frozen copy,
+runs one GPU job at a time, and stops on subprocess or provenance validation
+failure. `queue_state.json` records progress, while each run retains its log,
+training manifest, checkpoints, completion marker, and evaluation files.
+Completed work can be recognized on a later `--execute`; incomplete training
+requires inspection instead of silently resuming with different RNG state.
+On the inspected laptop, historical full runs took roughly 2.7–3.1 hours each;
+15 fresh runs and 45 evaluations are a multi-day workload.
+
+`build_main_table.py --suite <output>/suite.json --output-dir <output>/table`
+generates `main_table.tex`, `main_table.json`, and `inventory.md`. The queue calls
+it as results arrive. For each metric it first averages the three evaluations
+within one training seed, then reports the mean and sample standard deviation
+(`ddof=1`) over the five trained policies. Survival is expressed in percent;
+episode length is in control steps. Episode-level variation is not used as the
+reported training-seed standard deviation. Incomplete results remain pending;
+legacy actors, inconsistent budgets/protocols, and mismatched identities are
+rejected. The generated caption describes the comparison without presupposing
+an improvement or a causal explanation. Manuscript files are not edited.
 
 ## Unresolved reproduction work
 
