@@ -20,6 +20,7 @@ from evaluation_protocol import PROTOCOL_IDS, BeforeResetCapture, EpisodeCollect
 from isaacgym import gymutil
 from legged_gym import LEGGED_GYM_ROOT_DIR
 from provenance import file_identity, source_snapshot
+from robustness import capture_realized_dynamics, configure_robustness, install_robustness_task
 from runtime import VARIANTS, register_tasks
 
 task_registry = register_tasks()
@@ -41,6 +42,12 @@ def get_eval_args():
         {"name": "--seed", "type": int, "default": 1},
         {"name": "--evaluation_protocol", "type": str, "default": "balanced", "choices": list(PROTOCOL_IDS)},
         {"name": "--condition_name", "type": str, "default": "match_nopush"},
+        {
+            "name": "--robustness_condition",
+            "type": str,
+            "default": None,
+            "choices": ["nominal", "low_friction", "payload_mass"],
+        },
         {"name": "--terrain_mode", "type": str, "default": "match"},
         {"name": "--push_mode", "type": str, "default": "off"},
         {"name": "--push_interval_s", "type": float, "default": None},
@@ -150,6 +157,13 @@ def load_eval_bundle(args):
 
     env_cfg = override_eval_cfg(env_cfg, args.num_envs)
     env_cfg = apply_eval_condition_overrides(env_cfg, args)
+    robustness_condition = getattr(args, "robustness_condition", None)
+    dynamics_spec = None
+    if robustness_condition is not None:
+        if args.condition_name != robustness_condition or env_cfg.domain_rand.push_robots:
+            raise ValueError("Robustness conditions require matching labels and disabled pushes")
+        dynamics_spec = configure_robustness(env_cfg, robustness_condition)
+        install_robustness_task(task_registry, args.task, robustness_condition)
     if env_cfg.terrain.mesh_type != "plane":
         raise ValueError("This extracted experiment currently supports the paper plane task only.")
     if getattr(args, "enable_camera_sensors", False):
@@ -195,6 +209,8 @@ def load_eval_bundle(args):
     validate_checkpoint(Path(checkpoint_path), class_to_dict(train_cfg))
 
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
+    # Read back physical properties before the runner or collector steps the simulator.
+    realized_dynamics = capture_realized_dynamics(env, dynamics_spec) if dynamics_spec else None
     train_cfg.runner.resume = False
     runner, _ = task_registry.make_alg_runner(
         env=env, name=args.task, args=args, train_cfg=train_cfg, log_root=None
@@ -236,6 +252,8 @@ def load_eval_bundle(args):
         },
         "source": source_snapshot(Path(__file__).parent, dict(sys.modules)),
     }
+    if dynamics_spec is not None:
+        provenance["robustness"] = {"spec": dynamics_spec, "realized": realized_dynamics}
 
     return {
         "task": args.task,

@@ -27,6 +27,11 @@ that actor with a matched MLP (`mlp-1321k`) and approximately 1.500M wide/deep
 MLPs (`mlp-wide-1500k`, `mlp-deep-1500k`), retaining the same critic and PPO
 budget. These optional recipes have a separate four-method, five-seed report.
 
+The [seed-1 robustness evaluation](ROBUSTNESS.md) reuses their final checkpoints
+on nominal ground, friction 0.20, and uniform link mass increased by 15%. It
+records realized physics and repeats nominal evaluation to check parity. This
+is one-training-seed evidence; uniform mass scaling is not an attached payload.
+
 ## Source and validation status
 
 - New gated actors pass degree-three polynomial/gradient checks, learned-alpha

@@ -26,6 +26,7 @@ def load_module(name, path):
 
 PROTOCOL = load_module("humanoid_eval_protocol_test", INTEGRATION / "evaluation_protocol.py")
 PROVENANCE = load_module("humanoid_eval_provenance_test", INTEGRATION / "provenance.py")
+ROBUSTNESS = load_module("humanoid_eval_robustness_test", INTEGRATION / "robustness.py")
 legged_gym = types.ModuleType("legged_gym")
 legged_gym.LEGGED_GYM_ROOT_DIR = "unused"
 isaacgym = types.ModuleType("isaacgym")
@@ -38,6 +39,7 @@ with mock.patch.dict(
         "legged_gym.utils": types.SimpleNamespace(class_to_dict=lambda value: value, get_load_path=None),
         "evaluation_protocol": PROTOCOL,
         "provenance": PROVENANCE,
+        "robustness": ROBUSTNESS,
         "checkpoints": types.SimpleNamespace(actor_variant=lambda name: None, validate_checkpoint=None),
         "runtime": types.SimpleNamespace(VARIANTS={}, register_tasks=lambda: None),
     },
