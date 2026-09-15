@@ -76,3 +76,42 @@ means remain pending until all three evaluation seeds finish. These are results
 from **one trained policy per architecture**: do not report five-training-seed
 standard deviations, general seed robustness, or a causal physics claim from
 these rollouts. The manuscript's historical residual-actor results are separate.
+
+## Add the original residual PRISM
+
+`run_residual_robustness.py` adds the freshly trained `legacy-prism` checkpoint
+from training seed 1 to this comparison. It evaluates the original residual
+actor with its completed 500-update warmup. It does not select the separate
+`residual-learned-gate` diagnostic or adopt archived checkpoints with unknown
+training seeds.
+
+Prepare a separate extension after the four-model robustness suite is complete:
+
+```bash
+python integrations/humanoid-gym/run_residual_robustness.py \
+  --prepare --residual-suite /absolute/path/to/residual-training-suite \
+  --reference-robustness-suite /absolute/path/to/completed-robustness-suite \
+  --output-dir /absolute/path/to/new-residual-robustness-suite
+python /absolute/path/to/new-residual-robustness-suite/source/integration/run_residual_robustness.py \
+  --output-dir /absolute/path/to/new-residual-robustness-suite --dry-run
+python /absolute/path/to/new-residual-robustness-suite/source/integration/run_residual_robustness.py \
+  --output-dir /absolute/path/to/new-residual-robustness-suite --execute
+python /absolute/path/to/new-residual-robustness-suite/source/integration/run_residual_robustness.py \
+  --output-dir /absolute/path/to/new-residual-robustness-suite --report --require-complete
+```
+
+The extension pins the completed reference results and the fresh residual
+training checkpoint. It preserves the residual training bundle's exact
+`config.py` and `runtime.py` in the new evaluation bundle; the reference versions
+only add registrations for the four capacity models. Both versions and the
+explicit residual architecture differences are recorded and checked. The
+remaining training settings and the evaluation protocol, environment, runtime,
+and realized physical conditions must match the reference comparison.
+
+This adds **nine evaluations / 1,800 episodes**, with the same three conditions
+and evaluation seeds. The original 36 reference evaluations remain unchanged.
+Only completed three-evaluation-seed conditions belong in the combined table;
+an archived residual nominal score must not fill a missing fresh-seed result.
+The extension's `comparison_summary.json` and `.md` combine the five models and
+update automatically as residual evaluations finish. The original four-model
+result files remain unchanged.

@@ -28,6 +28,7 @@ class ReleaseBundleTest(unittest.TestCase):
             "integrations/humanoid-gym/run_residual_gate_controls.py",
             "integrations/humanoid-gym/run_capacity_controls.py",
             "integrations/humanoid-gym/run_robustness.py",
+            "integrations/humanoid-gym/run_residual_robustness.py",
             "integrations/humanoid-gym/build_main_table.py",
             "integrations/humanoid-gym/verify_environment.py",
             "integrations/bfm-zero/evaluate_scenarios.py",

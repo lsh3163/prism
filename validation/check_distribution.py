@@ -32,6 +32,7 @@ SOURCE_FILES = {
     "integrations/humanoid-gym/run_residual_gate_controls.py",
     "integrations/humanoid-gym/run_capacity_controls.py",
     "integrations/humanoid-gym/run_robustness.py",
+    "integrations/humanoid-gym/run_residual_robustness.py",
     "integrations/humanoid-gym/robustness.py",
     "integrations/humanoid-gym/ROBUSTNESS.md",
     "integrations/humanoid-gym/MAIN_TABLE.md",
