@@ -166,12 +166,17 @@ class TrainingObserver:
 def main():
     # Parse our small wrapper before loading the simulator so --help is usable
     # without Isaac Gym. All remaining arguments retain upstream CLI spelling.
-    from runtime import VARIANTS
+    from runtime import VARIANTS, describe_variant
 
     command = [sys.executable] + sys.argv[:]
     parser = argparse.ArgumentParser(description=__doc__, add_help=False)
     parser.add_argument("--variant", choices=VARIANTS, default="prism")
     parser.add_argument("-h", "--help", action="store_true")
+    parser.add_argument(
+        "--describe-variant",
+        action="store_true",
+        help="Print the fully resolved release recipe without importing Isaac Gym",
+    )
     parser.add_argument(
         "--dry-run", action="store_true", help="Print the selected task without importing Isaac Gym"
     )
@@ -180,12 +185,19 @@ def main():
         parser.print_help()
         print("Pass upstream flags such as --seed=1 --num_envs=16 --max_iterations=1 --headless.")
         return
+    if wrapper.describe_variant:
+        print(json.dumps(describe_variant(wrapper.variant), indent=2, sort_keys=True))
+        return
     if any(arg == "--task" or arg.startswith("--task=") for arg in remaining):
         parser.error("select the task with --variant")
     if wrapper.dry_run:
         print(
             json.dumps(
-                {"variant": wrapper.variant, "task": VARIANTS[wrapper.variant][0], "arguments": remaining},
+                {
+                    "variant": wrapper.variant,
+                    "task": VARIANTS[wrapper.variant][0],
+                    "arguments": remaining,
+                },
                 indent=2,
             )
         )

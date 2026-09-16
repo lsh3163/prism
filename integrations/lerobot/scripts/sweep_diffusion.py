@@ -3,33 +3,69 @@
 from __future__ import annotations
 
 import argparse
-import copy
 import json
 from pathlib import Path
 
 from common import SUITES, add_execution_args, nonnegative_int, positive_int, run_commands
-from eval_diffusion import build_run, make_parser
+from eval_diffusion import build_run_from_request
+from evaluation_specs import (
+    EVALUATION_PROTOCOL,
+    MCC_SWEEP_SPECS,
+    ROBUSTNESS_PERTURBATIONS,
+    VALIDATION_TASKS,
+    EvaluationRequest,
+    mcc_configs_text,
+)
 
-VALIDATION_TASKS = ("libero_spatial:1", "libero_object:3", "libero_goal:7", "libero_10:1")
-PERTURBATIONS = {
-    "clean": (0, 0.0, 0.0),
-    "action_delay": (1, 0.0, 0.0),
-    "proprio_noise": (0, 0.01, 0.0),
-    "image_corrupt": (0, 0.0, 0.05),
-    "combined": (1, 0.01, 0.03),
-}
-# gain, delay, EMA, noise standard deviation, correction clip; original c00-c08 order.
-MCC_CONFIGS = [
-    (0.005, 0, 0.70, 0.05, 0.05),
-    (0.005, 1, 0.90, 0.05, 0.05),
-    (0.010, 0, 0.70, 0.05, 0.05),
-    (0.010, 1, 0.90, 0.05, 0.05),
-    (0.015, 1, 0.90, 0.15, 0.05),
-    (0.015, 2, 0.90, 0.15, 0.05),
-    (0.020, 1, 0.90, 0.15, 0.05),
-    (0.010, 1, 0.70, 0.15, 0.10),
-    (0.015, 1, 0.70, 0.05, 0.10),
-]
+# Public compatibility views. The immutable definitions above own their order.
+PERTURBATIONS = {specification.name: specification.as_tuple() for specification in ROBUSTNESS_PERTURBATIONS}
+MCC_CONFIGS = [specification.as_tuple() for specification in MCC_SWEEP_SPECS]
+
+
+def evaluation_request(
+    args: argparse.Namespace,
+    *,
+    entry: dict,
+    suite: str,
+    task_id: int,
+    output_root: Path,
+    episodes: int,
+    batch_size: int,
+    save_probe_traces: bool,
+    mcc_gain: float = EVALUATION_PROTOCOL.mcc_gain,
+    mcc_delay: int = EVALUATION_PROTOCOL.mcc_delay,
+    mcc_ema: float = EVALUATION_PROTOCOL.mcc_ema,
+    mcc_noise: float = EVALUATION_PROTOCOL.mcc_noise,
+    mcc_clip: float | None = None,
+    action_delay: int = 0,
+    proprio_noise: float = 0.0,
+    image_noise: float = 0.0,
+) -> EvaluationRequest:
+    """Construct a sweep request explicitly, without reparsing or mutating CLI state."""
+
+    return EvaluationRequest(
+        baseline=Path(entry["baseline"]),
+        prism=Path(entry["prism"]) if args.kind != "mcc" else None,
+        suite=suite,
+        task_id=task_id,
+        output_root=output_root,
+        episodes=episodes,
+        batch_size=batch_size,
+        render_episodes=EVALUATION_PROTOCOL.render_episodes,
+        seed=args.seed,
+        controller=args.controller,
+        mcc_gain=mcc_gain,
+        mcc_noise=mcc_noise,
+        mcc_delay=mcc_delay,
+        mcc_ema=mcc_ema,
+        mcc_clip=mcc_clip,
+        action_delay=action_delay,
+        proprio_noise=proprio_noise,
+        image_noise=image_noise,
+        save_probe_traces=save_probe_traces,
+        python=args.python,
+        device=args.device,
+    )
 
 
 def build_plan(args: argparse.Namespace) -> tuple[list, dict[Path, str]]:
@@ -49,59 +85,68 @@ def build_plan(args: argparse.Namespace) -> tuple[list, dict[Path, str]]:
             raise ValueError(f"Checkpoint map requires {', '.join(required)} paths for {key}")
     extra_files = {}
     if args.kind == "mcc":
-        config_lines = [
-            f"c{index:02d} " + " ".join(map(str, values)) for index, values in enumerate(MCC_CONFIGS)
-        ]
-        extra_files[args.output_root / "configs.txt"] = "\n".join(config_lines) + "\n"
+        extra_files[args.output_root / "configs.txt"] = mcc_configs_text()
         extra_files[args.output_root / "tasks.txt"] = " ".join(tasks) + "\n"
     runs = []
     for key in tasks:
         suite, task_id = key.split(":")
         entry = checkpoints[key]
-        options = make_parser().parse_args(
-            [
-                "--lerobot-root",
-                str(args.lerobot_root),
-                "--suite",
-                suite,
-                "--task-id",
-                task_id,
-                "--output-root",
-                str(args.output_root),
-            ]
-        )
-        options.baseline = Path(entry["baseline"])
-        options.prism = Path(entry["prism"]) if args.kind != "mcc" else None
-        options.seed = args.seed
-        options.python = args.python
-        options.device = args.device
-        options.egl_vendor_file = args.egl_vendor_file
-        options.controller = args.controller
-        options.episodes = args.episodes or (10 if args.kind == "nominal" else 5)
-        options.batch_size = 5 if args.kind == "robustness" else 1
-        options.save_probe_traces = args.kind == "mcc"
-        options.mcc_clip = 0.05 if args.kind == "robustness" else None
-        variants = (
-            list(PERTURBATIONS)
-            if args.kind == "robustness"
-            else (
-                [f"c{index:02d}" for index in range(len(MCC_CONFIGS))] if args.kind == "mcc" else ["nominal"]
-            )
-        )
-        for index, variant in enumerate(variants):
-            current = copy.copy(options)
-            current.output_root = args.output_root / variant / f"{suite}_task_{task_id}"
-            rows = ("baseline", "mcc", "oracle", "prism")
+        episodes = args.episodes or (10 if args.kind == "nominal" else 5)
+        if args.kind == "robustness":
+            variants = ((specification.name, specification) for specification in ROBUSTNESS_PERTURBATIONS)
+        elif args.kind == "mcc":
+            variants = ((specification.name, specification) for specification in MCC_SWEEP_SPECS)
+        else:
+            variants = (("nominal", None),)
+        for variant, specification in variants:
+            output_root = args.output_root / variant / f"{suite}_task_{task_id}"
             if args.kind == "robustness":
-                current.action_delay, current.proprio_noise, current.image_noise = PERTURBATIONS[variant]
+                request = evaluation_request(
+                    args,
+                    entry=entry,
+                    suite=suite,
+                    task_id=int(task_id),
+                    output_root=output_root,
+                    episodes=episodes,
+                    batch_size=5,
+                    save_probe_traces=False,
+                    mcc_clip=0.05,
+                    action_delay=specification.action_delay,
+                    proprio_noise=specification.proprio_noise,
+                    image_noise=specification.image_noise,
+                )
                 rows = ("baseline", "mcc", "prism")
             elif args.kind == "mcc":
-                current.mcc_gain, current.mcc_delay, current.mcc_ema, current.mcc_noise, current.mcc_clip = (
-                    MCC_CONFIGS[index]
+                request = evaluation_request(
+                    args,
+                    entry=entry,
+                    suite=suite,
+                    task_id=int(task_id),
+                    output_root=output_root,
+                    episodes=episodes,
+                    batch_size=1,
+                    save_probe_traces=True,
+                    mcc_gain=specification.gain,
+                    mcc_delay=specification.delay,
+                    mcc_ema=specification.ema,
+                    mcc_noise=specification.noise,
+                    mcc_clip=specification.correction_clip,
                 )
                 rows = ("mcc",)
+            else:
+                request = evaluation_request(
+                    args,
+                    entry=entry,
+                    suite=suite,
+                    task_id=int(task_id),
+                    output_root=output_root,
+                    episodes=episodes,
+                    batch_size=1,
+                    save_probe_traces=False,
+                )
+                rows = ("baseline", "mcc", "oracle", "prism")
             for row in rows:
-                run = build_run(current, row)
+                run = build_run_from_request(request, row)
                 run.metadata.update(sweep=args.kind, variant=variant)
                 runs.append(run)
     return runs, extra_files
