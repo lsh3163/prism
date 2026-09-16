@@ -6,7 +6,6 @@ import argparse
 from pathlib import Path
 
 from common import (
-    ACTOR_IDS,
     SUITES,
     Run,
     add_execution_args,
@@ -15,12 +14,15 @@ from common import (
     positive_int,
     run_commands,
 )
+from profile_catalog import SMOLVLA_PROFILE_NAMES, smolvla_profile
 
 
 def build_run(args: argparse.Namespace) -> Run:
     command = command_prefix(args, args.action)
+    profile = smolvla_profile(args.profile) if args.profile is not None else None
     if args.action == "train":
-        conditioner = {"baseline": "linear", "larger": "mlp", "prism": "prism"}[args.profile]
+        if profile is None:
+            raise ValueError("train requires a SmolVLA profile")
         command.extend(
             [
                 "--policy.type=smolvla",
@@ -29,11 +31,11 @@ def build_run(args: argparse.Namespace) -> Run:
                 "--policy.freeze_vision_encoder=true",
                 "--policy.train_expert_only=true",
                 "--policy.train_state_proj=true",
-                f"--policy.state_conditioner_type={conditioner}",
-                f"--policy.state_conditioner_num_layers={3 if args.profile == 'larger' else 2}",
-                "--policy.state_conditioner_product_mode=gated_quadratic",
-                "--policy.state_conditioner_gate_scale_init=0.01",
-                "--policy.state_conditioner_use_rmsnorm=true",
+                f"--policy.state_conditioner_type={profile.conditioner_type}",
+                f"--policy.state_conditioner_num_layers={profile.num_layers}",
+                f"--policy.state_conditioner_product_mode={profile.product_mode}",
+                f"--policy.state_conditioner_gate_scale_init={profile.gate_scale_init}",
+                f"--policy.state_conditioner_use_rmsnorm={str(profile.use_rmsnorm).lower()}",
                 "--policy.scheduler_warmup_steps=100",
                 "--policy.scheduler_decay_steps=100000",
                 "--dataset.repo_id=HuggingFaceVLA/libero",
@@ -47,8 +49,8 @@ def build_run(args: argparse.Namespace) -> Run:
                 "--wandb.enable=false",
             ]
         )
-        if args.profile == "larger":
-            command.append("--policy.state_conditioner_hidden_dim=2048")
+        if profile.hidden_dim is not None:
+            command.append(f"--policy.state_conditioner_hidden_dim={profile.hidden_dim}")
     else:
         command.extend(
             [
@@ -73,12 +75,18 @@ def build_run(args: argparse.Namespace) -> Run:
         {
             "policy": "smolvla",
             "profile": args.profile,
-            "actor_variant": ACTOR_IDS["smolvla"] if args.profile == "prism" else None,
-            "architecture": {"baseline": "linear", "larger": "mlp", "prism": "prism"}.get(args.profile),
+            "canonical_profile": profile.name if profile is not None else None,
+            "profile_settings": profile.as_dict() if profile is not None else None,
+            "actor_variant": profile.actor_variant if profile is not None else None,
+            "architecture": profile.conditioner_type if profile is not None else None,
             "action": args.action,
             "seed": args.seed,
-            "product_mode": "gated_quadratic" if args.action == "train" and args.profile == "prism" else None,
-            "gate_scale_init": 0.01 if args.action == "train" and args.profile == "prism" else None,
+            "product_mode": profile.product_mode
+            if args.action == "train" and profile.has_learned_gate
+            else None,
+            "gate_scale_init": profile.gate_scale_init
+            if args.action == "train" and profile.has_learned_gate
+            else None,
         },
         {"MUJOCO_GL": "egl", "PYOPENGL_PLATFORM": "egl"},
         args.checkpoint,
@@ -91,7 +99,7 @@ def main() -> None:
     add_execution_args(parser)
     parser.add_argument(
         "--profile",
-        choices=("baseline", "larger", "prism"),
+        choices=SMOLVLA_PROFILE_NAMES,
         help="Train default: prism. For eval, optionally require this checkpoint architecture",
     )
     parser.add_argument("--seed", type=nonnegative_int, default=1000)

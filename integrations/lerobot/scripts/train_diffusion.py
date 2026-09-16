@@ -7,8 +7,6 @@ import json
 from pathlib import Path
 
 from common import (
-    ACTOR_IDS,
-    DIFFUSION_LEGACY_ACTOR_ID,
     INTEGRATION_ROOT,
     SUITES,
     Run,
@@ -19,16 +17,12 @@ from common import (
     positive_int,
     run_commands,
 )
+from profile_catalog import DIFFUSION_PROFILE_NAMES, resolve_diffusion_profile
 
 
 def build_command(args: argparse.Namespace, task: dict) -> tuple[list[str], Path]:
-    profile = "legacy-prism" if args.profile in {"prism", "legacy-prism"} else "historical-baseline"
-    settings = task["profiles"][profile]
-    matched = args.profile in {"baseline", "matched-baseline"}
-    batch_size = 64 if matched else settings["batch_size"]
-    workers = 8 if matched else settings["num_workers"]
-    gated = args.profile in {"prism", "baseline", "matched-baseline"}
-    enabled = args.profile in {"prism", "legacy-prism"}
+    profile = resolve_diffusion_profile(args.profile, task["profiles"])
+    specification = profile.specification
     output = args.output_root / args.profile / task["suite"] / f"task_{task['task_id']}"
     command = [
         *command_prefix(args, "train"),
@@ -48,9 +42,9 @@ def build_command(args: argparse.Namespace, task: dict) -> tuple[list[str], Path
         "--policy.optimizer_lr=0.0001",
         "--policy.compile_model=false",
         "--policy.use_amp=true",
-        f"--policy.use_poly_kernel_conditioning={str(enabled).lower()}",
+        f"--policy.use_poly_kernel_conditioning={str(specification.conditioning_enabled).lower()}",
         "--policy.poly_kernel_source=state",
-        f"--policy.poly_kernel_lift_mode={'gated_quadratic' if gated else 'latent_quadratic'}",
+        f"--policy.poly_kernel_lift_mode={specification.lift_mode}",
         "--policy.poly_kernel_latent_dim=256",
         "--policy.poly_kernel_hidden_dim=256",
         "--policy.poly_kernel_gate_scale_init=0.01",
@@ -63,8 +57,8 @@ def build_command(args: argparse.Namespace, task: dict) -> tuple[list[str], Path
         "--save_freq=10000",
         "--log_freq=200",
         "--eval_freq=0",
-        f"--batch_size={batch_size}",
-        f"--num_workers={workers}",
+        f"--batch_size={profile.batch_size}",
+        f"--num_workers={profile.num_workers}",
         "--prefetch_factor=4",
         "--persistent_workers=true",
         f"--seed={args.seed}",
@@ -81,14 +75,7 @@ def main() -> None:
     add_execution_args(parser)
     parser.add_argument(
         "--profile",
-        choices=(
-            "prism",
-            "baseline",
-            "legacy-prism",
-            "legacy-baseline",
-            "historical-baseline",
-            "matched-baseline",
-        ),
+        choices=DIFFUSION_PROFILE_NAMES,
         default="prism",
         help="Default: gated PRISM. baseline is its matched control; legacy profiles preserve archived recipes",
     )
@@ -108,6 +95,7 @@ def main() -> None:
     for task in tasks:
         if task["suite"] in suites and task["task_id"] in task_ids:
             command, output = build_command(args, task)
+            profile = resolve_diffusion_profile(args.profile, task["profiles"])
             runs.append(
                 Run(
                     command,
@@ -115,20 +103,10 @@ def main() -> None:
                     {
                         "policy": "diffusion",
                         "profile": args.profile,
-                        "actor_variant": (
-                            ACTOR_IDS["diffusion"]
-                            if args.profile == "prism"
-                            else DIFFUSION_LEGACY_ACTOR_ID
-                            if args.profile == "legacy-prism"
-                            else None
-                        ),
-                        "architecture": (
-                            "gated_state"
-                            if args.profile == "prism"
-                            else "factorized_state"
-                            if args.profile == "legacy-prism"
-                            else "nominal"
-                        ),
+                        "canonical_profile": profile.specification.canonical_name,
+                        "profile_settings": profile.as_dict(),
+                        "actor_variant": profile.specification.actor_variant,
+                        "architecture": profile.specification.architecture,
                         "suite": task["suite"],
                         "task_id": task["task_id"],
                         "seed": args.seed,

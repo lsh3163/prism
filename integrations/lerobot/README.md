@@ -117,6 +117,15 @@ checkpoint, before starting a run or writing sweep files. Existing output
 directories and command records are rejected. Choose a new output root to
 repeat a run; these recipes do not resume or overwrite previous runs.
 
+`scripts/profile_catalog.py` and `scripts/evaluation_specs.py` centralize the
+released profiles and evaluation protocol. Historical task JSON and saved
+configs remain immutable evidence. Inspect either catalog without LeRobot:
+
+```bash
+python "$PRISM_ROOT/integrations/lerobot/scripts/profile_catalog.py" --kind all
+python "$PRISM_ROOT/integrations/lerobot/scripts/evaluation_specs.py" --kind all
+```
+
 Each execution writes `RUN.command.json` beside its output directory. Its
 versioned record includes the exact argument list, selected checkout and
 environment overrides, source hashes, checkpoint/config/processor hashes,
@@ -145,11 +154,10 @@ diffusion training timesteps, ten inference steps, 128×128 images, U-Net widths
 | `legacy-prism` | 64 | 8 | Archived ungated recipe (`diffusion_factorized_state_v1`) |
 | `legacy-baseline` | 8 | 4 | Archived nominal Diffusion recipe |
 
-`matched-baseline` remains an alias of the new `baseline` settings;
-`historical-baseline` remains an alias of `legacy-baseline`. Use `prism` and
-`baseline` together for a new comparison. The low-level LeRobot dataclass
-retains its ungated default for missing-field legacy config compatibility;
-the new runner explicitly saves `poly_kernel_lift_mode=gated_quadratic`.
+`matched-baseline` aliases `baseline`; `historical-baseline` aliases
+`legacy-baseline`. New comparisons use `prism` and `baseline`. Controls retain
+the shared inactive polynomial flags for comparable serialized configs, while
+`use_poly_kernel_conditioning` alone selects that branch.
 
 **The historical baseline and ungated PRISM runs did not use matched batch sizes.**
 Neither the gated actor nor the new matched control inherits a historical result. The patch's bf16
@@ -247,6 +255,7 @@ Outputs retain the method directory names expected by
 `analysis/paper/summarize_robustness.py` and `summarize_mcc_sweep.py`. MCC writes
 `configs.txt` and `tasks.txt` when executed. `--save-probe-traces` in the single
 evaluation runner exports state/force traces for downstream analysis.
+Run records store the resolved protocol alongside the command list.
 
 ## SmolVLA stronger-backbone experiment
 
@@ -279,6 +288,8 @@ Archived baseline/larger saved configs were not recovered, so the commands'
 architecture settings, including RMSNorm, are not verified against those
 historical checkpoints. The public release specifies changing conditioner type
 relative to its shared recipe; these commands implement that stated comparison.
+All profiles emit shared product/gate/RMSNorm flags; only
+`state_conditioner_type` selects the linear, MLP, or PRISM graph.
 `--policy.type=smolvla --policy.load_vlm_weights=true` loads the VLM's pretrained
 weights; it does not load an entire `lerobot/smolvla_base` policy checkpoint.
 Evaluation uses 50 episodes for each of 40 tasks (2,000 total), with the

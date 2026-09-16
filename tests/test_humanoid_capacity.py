@@ -14,6 +14,7 @@ from unittest import mock
 import torch
 
 INTEGRATION = Path(__file__).resolve().parents[1] / "integrations/humanoid-gym"
+sys.path.insert(0, str(INTEGRATION))
 RECIPES = {
     "prism-1321k": ("G1HumanoidGymCfgPPOGated1321", [513, 256, 128], 921715, 1320576),
     "mlp-1321k": ("G1HumanoidGymCfgPPOMatched1321", [816, 352, 160], 922092, 1320953),

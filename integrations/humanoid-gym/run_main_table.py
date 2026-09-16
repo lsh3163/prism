@@ -12,11 +12,14 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-TRAINING_SEEDS = (1, 2, 3, 4, 5)
-EVALUATION_SEEDS = (101, 102, 103)
-VARIANTS = ("baseline", "larger", "prism")
-ITERATIONS = 3001
-TRAINING_ENVS = 4096
+from recipe_catalog import MAIN_TABLE_SPEC
+
+
+TRAINING_SEEDS = MAIN_TABLE_SPEC.training_seeds
+EVALUATION_SEEDS = MAIN_TABLE_SPEC.evaluation_seeds
+VARIANTS = MAIN_TABLE_SPEC.variants
+ITERATIONS = MAIN_TABLE_SPEC.max_iterations
+TRAINING_ENVS = MAIN_TABLE_SPEC.training_envs
 
 
 def now():
@@ -65,14 +68,7 @@ def planned_suite(output):
         "max_iterations": ITERATIONS,
         "num_envs": TRAINING_ENVS,
         "checkpoint_iteration": ITERATIONS,
-        "evaluation": {
-            "protocol_id": "g1_balanced_timeout_v2",
-            "episodes": 200,
-            "num_envs": 100,
-            "condition_name": "match_nopush",
-            "terrain_mode": "match",
-            "push_mode": "off",
-        },
+        "evaluation": MAIN_TABLE_SPEC.evaluation_settings(),
         "runs": runs,
     }
 
@@ -102,12 +98,12 @@ def evaluation_command(python, integration, run, checkpoint, seed, destination, 
         "--variant_name=" + run["variant"],
         "--model_path=" + str(checkpoint),
         "--seed=" + str(seed),
-        "--episodes=200",
-        "--num_envs=100",
-        "--evaluation_protocol=balanced",
-        "--condition_name=match_nopush",
-        "--terrain_mode=match",
-        "--push_mode=off",
+        "--episodes=" + str(MAIN_TABLE_SPEC.evaluation_episodes),
+        "--num_envs=" + str(MAIN_TABLE_SPEC.evaluation_envs),
+        "--evaluation_protocol=" + MAIN_TABLE_SPEC.evaluation_runner_protocol,
+        "--condition_name=" + MAIN_TABLE_SPEC.condition_name,
+        "--terrain_mode=" + MAIN_TABLE_SPEC.terrain_mode,
+        "--push_mode=" + MAIN_TABLE_SPEC.push_mode,
         "--sim_device=" + device,
         "--rl_device=" + device,
         "--headless",

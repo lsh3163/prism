@@ -12,10 +12,18 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+from profile_catalog import (
+    DIFFUSION_GATED_ACTOR_ID,
+    DIFFUSION_LEGACY_ACTOR_ID,
+    SMOLVLA_GATED_ACTOR_ID,
+    SMOLVLA_PROFILE_NAMES,
+    smolvla_profile,
+)
+
 INTEGRATION_ROOT = Path(__file__).resolve().parents[1]
 SUITES = ("libero_spatial", "libero_object", "libero_goal", "libero_10")
-ACTOR_IDS = {"diffusion": "diffusion_gated_state_v2", "smolvla": "smolvla_gated_quadratic_v1"}
-DIFFUSION_LEGACY_ACTOR_ID = "diffusion_factorized_state_v1"
+# Public compatibility constants used by the released runners and tests.
+ACTOR_IDS = {"diffusion": DIFFUSION_GATED_ACTOR_ID, "smolvla": SMOLVLA_GATED_ACTOR_ID}
 
 
 class Run:
@@ -169,7 +177,9 @@ def checkpoint_metadata(path: Path, policy: str, profile: str | None) -> dict:
                 )
         actor_variant = ACTOR_IDS[policy] if prism else None
     if profile is not None:
-        expected_architecture = {"baseline": "linear", "larger": "mlp", "prism": "prism"}
+        expected_architecture = {
+            name: smolvla_profile(name).conditioner_type for name in SMOLVLA_PROFILE_NAMES
+        }
         mismatch = (profile == "prism") != prism
         if policy == "smolvla":
             mismatch = expected_architecture[profile] != architecture

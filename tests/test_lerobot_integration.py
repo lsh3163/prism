@@ -16,6 +16,8 @@ import torch
 from torch import nn
 
 INTEGRATION = Path(__file__).resolve().parents[1] / "integrations/lerobot"
+SCRIPTS = INTEGRATION / "scripts"
+sys.path.insert(0, str(SCRIPTS))
 
 
 def load_module(name, path):

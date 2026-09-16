@@ -6,17 +6,11 @@ from typing import Mapping, Optional
 import torch
 from torch import Tensor
 
+from recipe_catalog import actor_variant_for_policy_class
+
 
 def actor_variant(policy_class: str) -> Optional[str]:
-    identities = {
-        "ActorCritic": None,
-        "PolyActorCritic": "g1_residual_poly_v1",
-        "GatedPolyActorCritic": "g1_gated_poly_v2",
-        "ResidualLearnedGateActorCritic": "g1_residual_learned_gate_v1",
-    }
-    if policy_class not in identities:
-        raise ValueError("Unknown G1 policy class: " + policy_class)
-    return identities[policy_class]
+    return actor_variant_for_policy_class(policy_class)
 
 
 def validate_state_schema(state: Mapping[str, Tensor], train_config: dict) -> Optional[str]:

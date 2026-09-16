@@ -3,11 +3,13 @@
 import hashlib
 import importlib.util
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "integrations/humanoid-gym/run_main_table.py"
+sys.path.insert(0, str(MODULE_PATH.parent))
 SPEC = importlib.util.spec_from_file_location("humanoid_main_suite", MODULE_PATH)
 suite = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(suite)

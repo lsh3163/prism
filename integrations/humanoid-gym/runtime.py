@@ -1,27 +1,21 @@
-"""Register the released simulation tasks in this process, without editing upstream."""
+"""Register released G1 tasks while preserving upstream task/config interfaces."""
 
+from recipe_catalog import (
+    DEFAULT_VARIANT_NAMES,
+    PUBLIC_VARIANT_NAMES,
+    describe_variant,
+    recipe_for_variant,
+    unique_recipes,
+)
+
+
+# Public compatibility mapping used by existing runners and manifests.  The
+# catalog owns the values; this adapter intentionally retains the old shape.
 VARIANTS = {
-    "baseline": ("g1_humanoidgym_ppo", "G1HumanoidGymCfgPPO"),
-    "larger": ("g1_humanoidgym_ppo_larger_v2", "G1HumanoidGymCfgPPOLarger"),
-    "degree1": ("g1_humanoidgym_ppo_gated_d1", "G1HumanoidGymCfgPPOGatedD1"),
-    "prism": ("g1_humanoidgym_ppo_gated_d2", "G1HumanoidGymCfgPPOGated"),
-    "degree2": ("g1_humanoidgym_ppo_gated_d2", "G1HumanoidGymCfgPPOGated"),
-    "degree3": ("g1_humanoidgym_ppo_gated_d3", "G1HumanoidGymCfgPPOGatedD3"),
-    "legacy-larger": ("g1_humanoidgym_ppo_parammatch", "G1HumanoidGymCfgPPOParamMatched"),
-    "legacy-degree1": ("g1_humanoidgym_ppo_poly_d1", "G1HumanoidGymCfgPPOPolyD1"),
-    "legacy-degree2": ("g1_humanoidgym_ppo_poly", "G1HumanoidGymCfgPPOPoly"),
-    "legacy-prism": ("g1_humanoidgym_ppo_poly_warmup", "G1HumanoidGymCfgPPOPolyWarmup"),
-    "legacy-degree3": ("g1_humanoidgym_ppo_poly_d3", "G1HumanoidGymCfgPPOPolyD3"),
-    "residual-learned-gate": (
-        "g1_humanoidgym_ppo_residual_learned_gate",
-        "G1HumanoidGymCfgPPOResidualLearnedGate",
-    ),
-    "prism-1321k": ("g1_humanoidgym_ppo_gated_1321k", "G1HumanoidGymCfgPPOGated1321"),
-    "mlp-1321k": ("g1_humanoidgym_ppo_mlp_1321k", "G1HumanoidGymCfgPPOMatched1321"),
-    "mlp-wide-1500k": ("g1_humanoidgym_ppo_mlp_wide_1500k", "G1HumanoidGymCfgPPOWide1500"),
-    "mlp-deep-1500k": ("g1_humanoidgym_ppo_mlp_deep_1500k", "G1HumanoidGymCfgPPODeep1500"),
+    name: (recipe_for_variant(name).task_name, recipe_for_variant(name).config_class)
+    for name in PUBLIC_VARIANT_NAMES
 }
-DEFAULT_VARIANTS = ("baseline", "larger", "degree1", "prism", "degree3")
+DEFAULT_VARIANTS = DEFAULT_VARIANT_NAMES
 
 
 def register_tasks():
@@ -58,6 +52,11 @@ def register_tasks():
 
         on_policy_runner.PPO = HumanoidPPO
 
-    for task_name, config_name in dict.fromkeys(VARIANTS.values()):
-        task_registry.register(task_name, G1Robot, config.G1HumanoidGymCfg(), getattr(config, config_name)())
+    for recipe in unique_recipes():
+        task_registry.register(
+            recipe.task_name,
+            G1Robot,
+            config.G1HumanoidGymCfg(),
+            getattr(config, recipe.config_class)(),
+        )
     return task_registry

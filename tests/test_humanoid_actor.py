@@ -16,6 +16,7 @@ from unittest import mock
 import torch
 
 INTEGRATION = Path(__file__).resolve().parents[1] / "integrations" / "humanoid-gym"
+sys.path.insert(0, str(INTEGRATION))
 
 
 def load_module(name, path):

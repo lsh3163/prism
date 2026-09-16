@@ -114,6 +114,15 @@ Use a clean pinned checkout to avoid inheriting unrelated local extensions.
 
 ## Training and ablations
 
+`recipe_catalog.py` is the single index for public variants and their
+policy-specific settings; `config.py` remains the executable RSL-RL interface.
+Inspect a recipe without importing the simulator:
+
+```bash
+python "$GYM_CODE/train.py" --variant prism --describe-variant
+python "$GYM_CODE/run_suite.py" --list-variants
+```
+
 | `--variant` | Actor | Polynomial degree | Alpha / scale |
 |---|---|---:|---:|
 | `baseline` | MLP `[512, 256, 128]` | — | — |
