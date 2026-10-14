@@ -1,0 +1,7 @@
+# Native camera-ready environment and actor API, fixed to the tested source.
+mjlab @ git+https://github.com/mujocolab/mjlab.git@033ae22a2c7a30a25a6fa77b16c113ed88dd1b55
+torch==2.14.0
+mujoco==3.11.0
+mujoco-warp==3.11.0
+warp-lang==1.14.0
+rsl-rl-lib==5.5.1

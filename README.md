@@ -51,6 +51,33 @@ Run the CPU example from a checkout:
 python examples/policy.py
 ```
 
+## Play a trained G1 policy
+
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/lsh3163/prism/blob/main/examples/g1/PRISM_G1_Play.ipynb)
+
+The Colab notebook installs the environment, runs both actors with configurable
+conditions and displays their freshly generated videos side by side. A CPU runtime works.
+
+[PRISM and MLP weights](checkpoints/g1) from the camera-ready experiments are included
+in the repository. No separate download or training is required.
+
+```bash
+git clone https://github.com/lsh3163/prism.git
+cd prism
+uv venv --python 3.13
+uv pip install -e . -r examples/g1/requirements.txt --torch-backend=cpu
+uv run --no-sync python examples/g1/play.py
+```
+
+Open `http://127.0.0.1:8080` for the interactive browser viewer. The default is
+PRISM walking on random rough terrain. Switch to `--actor mlp`, or change
+`--friction 0.2`, `--mass-ratio 1.4` or `--payload 8`. A positive payload appears
+as a backpack. Use `--device cuda:0` with a CUDA PyTorch installation for faster play.
+
+[Play guide](examples/g1/README.md) includes side-by-side comparison commands,
+headless execution, installation details and checkpoint provenance. This optional
+simulation environment is separate from the small PyTorch-only core package.
+
 ## Policy integrations
 
 [Adapter guide](docs/ADAPTERS.md): ACT and native mjlab camera-ready modules,

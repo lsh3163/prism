@@ -9,13 +9,16 @@ build/
 dist/
 
 # Research outputs are intentionally kept outside the source release.
-checkpoints/
+/checkpoints/*
+!/checkpoints/g1/
 datasets/
 outputs/
 results/
 wandb/
 *.ckpt
 *.pt
+!/checkpoints/g1/prism.pt
+!/checkpoints/g1/mlp.pt
 *.pth
 *.safetensors
 *.command.json
