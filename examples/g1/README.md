@@ -2,8 +2,9 @@
 
 [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/lsh3163/prism/blob/main/examples/g1/PRISM_G1_Play.ipynb)
 
-The notebook works with a CPU Colab runtime and includes condition controls,
-fresh PRISM/MLP videos and an optional interactive 3D viewer. Run its cells in order.
+The notebook includes condition controls, fresh PRISM/MLP videos and an optional
+interactive 3D viewer. A GPU runtime is recommended; it automatically selects a
+compatible PyTorch backend and device, with CPU fallback. Run its cells in order.
 
 The repository includes the camera-ready **PRISM** and **MLP** deterministic actors,
 including their trained observation normalization. Each checkpoint is less than
@@ -25,7 +26,7 @@ uv run --no-sync python examples/g1/play.py
 Open **http://127.0.0.1:8080**. The viewer lets you pause, reset, rotate the camera
 and change the velocity command. Press Ctrl+C in the terminal to stop.
 The first launch compiles MuJoCo-Warp kernels and takes longer than later launches.
-CPU execution needs no NVIDIA GPU; simulation speed depends on the machine.
+CPU execution needs no NVIDIA GPU; full comparison videos can take several minutes.
 
 The environment is pinned to the native mjlab source used for these actors.
 The core package has lighter requirements and does not install a simulator.
@@ -56,6 +57,8 @@ uv run --no-sync python examples/g1/play.py --velocity 1.0 0.0 0.0
 `--payload` adds an independently specified, welded, noncolliding load to the torso;
 the visible backpack has the same dimensions and pose as that load. The joint
 controller, action scaling and observation interface remain native mjlab.
+The inference environment computes actor observations and omits unused critic
+observations, contact rewards and training metrics.
 
 This interactive example uses a **5 × 5 random-rough grid** and a deterministic
 home reset. It is a qualitative playground. The paper's quantitative evaluation
@@ -83,6 +86,9 @@ MUJOCO_GL=osmesa PYOPENGL_PLATFORM=osmesa uv run --no-sync python examples/g1/pl
 CPU video rendering uses the OSMesa system library (`sudo apt install libosmesa6`
 on Ubuntu). The Colab setup cell installs it automatically. GPU offscreen rendering
 can use `MUJOCO_GL=egl`. The bundled FFmpeg executable writes the MP4.
+CPU videos default to 5 fps to reduce rendering cost; CUDA videos default to 25 fps.
+Use `--video-fps 25` to override the CPU default. Physics and policy rates remain
+unchanged at 200 Hz and 50 Hz, respectively.
 
 For an NVIDIA GPU, install the same requirements with a compatible CUDA PyTorch
 backend, then select the device:

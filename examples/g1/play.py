@@ -105,6 +105,12 @@ def environment_config(args):
     cfg.viewer.enable_reflections = False
     for sensor in cfg.scene.sensors:
         sensor.debug_vis = False
+    # Inference only: retain every actor input and the native physics/controller,
+    # without computing unused critic observations, contact rewards or metrics.
+    cfg.observations = {"actor": cfg.observations["actor"]}
+    cfg.scene.sensors = tuple(sensor for sensor in cfg.scene.sensors if sensor.name == "terrain_scan")
+    cfg.rewards = {}
+    cfg.metrics = {}
     cfg.scene.entities["robot"].spec_fn = functools.partial(robot_spec, args.mass_ratio, args.payload)
     friction = cfg.events["foot_friction"]
     friction.params["ranges"] = (args.friction, args.friction)
@@ -185,7 +191,8 @@ def main():
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--headless", action="store_true", help="Run once without a viewer; stop on a fall")
     parser.add_argument("--seconds", type=float, default=20.0)
-    parser.add_argument("--video", type=Path, help="Save a 25-fps MP4 during a headless attempt")
+    parser.add_argument("--video", type=Path, help="Save an MP4 during a headless attempt")
+    parser.add_argument("--video-fps", type=int, choices=(5, 10, 25), help="Default: 5 on CPU, 25 on CUDA")
     args = parser.parse_args()
     values = [args.friction, args.mass_ratio, args.payload, args.seconds, *args.velocity]
     if not all(math.isfinite(value) for value in values):
@@ -196,6 +203,7 @@ def main():
         parser.error("Port must be between 1 and 65535")
     if args.video and not args.headless:
         parser.error("--video requires --headless")
+    args.video_fps = args.video_fps or (5 if args.device == "cpu" else 25)
 
     import torch
     from mjlab.envs import ManagerBasedRlEnv
@@ -248,13 +256,13 @@ def main():
                 import mediapy
 
                 args.video.parent.mkdir(parents=True, exist_ok=True)
-                writer = mediapy.VideoWriter(str(args.video), shape=(360, 640), fps=25)
+                writer = mediapy.VideoWriter(str(args.video), shape=(360, 640), fps=args.video_fps)
             with writer as video:
                 if video:
                     video.add_image(env.render())
                 for tick in range(max(1, math.ceil(args.seconds / env.step_dt))):
                     observations, _, done, _ = wrapped.step(policy(observations))
-                    if video and ((tick + 1) % 2 == 0 or done.any()):
+                    if video and ((tick + 1) % (50 // args.video_fps) == 0 or done.any()):
                         video.add_image(env.render())
                     if done.any():
                         break
@@ -276,6 +284,7 @@ def main():
                         "initial_state_sha256": initial_state_sha256,
                         "terrain_sha256": terrain_sha256,
                         "wall_seconds": time.monotonic() - started,
+                        "video_fps": args.video_fps if args.video else None,
                         "video": str(args.video) if args.video else None,
                     }
                 )
