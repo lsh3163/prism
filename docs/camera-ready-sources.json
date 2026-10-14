@@ -1,0 +1,10 @@
+{
+  "method": "Camera-ready PDF, Eqs. (4)-(6): learned scalar coefficients, polynomial features before projection/activation/normalization",
+  "camera_ready_pdf_sha256": "e40ba9ddf644c1b8205efa59581ac2a9bd8b4e9296b071d1b043a2826ac2dd32",
+  "act_source_sha256": "d2c916c95ce6149a96f0978a7321ed05a6176e703848d79b68111ae5137c3998",
+  "act_scope": "Extracted BaseConditioner and PrismConditioner; native projection dimensions generalized; names, scalar arithmetic and initialization preserved at18-to256",
+  "mjlab_source_sha256": "7f6e26039430935248bd04c4e86e737e87858ad6d657c077a8cc8ce0ec13c939",
+  "mjlab_scope": "Only module docstring changed; actor definitions, coefficient shapes, FP64 RMS arithmetic, RNG isolation and checkpoint names preserved",
+  "mjlab_upstream_commit": "033ae22a2c7a30a25a6fa77b16c113ed88dd1b55",
+  "legacy_core_unchanged": true
+}

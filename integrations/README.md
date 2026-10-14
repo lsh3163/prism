@@ -1,5 +1,9 @@
 # Backbone Integrations
 
+For the current camera-ready entry point and ACT/mjlab modules, see the
+[adapter guide](../docs/ADAPTERS.md). The workflows below retain the earlier
+release recipes and checkpoint contracts.
+
 The default simulation recipes use learned per-feature gated interactions across
 G1, Diffusion, SmolVLA, and BFM-Zero. The original G1 and Diffusion computations
 remain available through legacy recipes. Read [../ACTOR_CONTRACT.md](../ACTOR_CONTRACT.md) before

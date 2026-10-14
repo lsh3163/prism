@@ -31,6 +31,15 @@ def write_bundle(directory: Path, source_path: Callable[[str], str]) -> None:
 
 
 class DistributionValidationTest(unittest.TestCase):
+    def test_simulator_dependent_tests_are_excluded_from_sdk(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_bundle(root, lambda name: f"{PACKAGE_ROOT}/{name}")
+            with zipfile.ZipFile(root / f"{PACKAGE_ROOT}-py3-none-any.whl", "a") as wheel:
+                wheel.writestr("tests/test_humanoid_actor.py", CONTENTS)
+            with self.assertRaisesRegex(ValueError, "Non-core test"):
+                VALIDATOR.check_distributions(root)
+
     def test_minimal_required_content_pair_passes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
