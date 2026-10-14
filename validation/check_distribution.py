@@ -7,68 +7,34 @@ import tarfile
 import zipfile
 from pathlib import Path, PurePosixPath
 
-CORE_FILES = {"prism_robot/__init__.py", "prism_robot/conditioner.py"}
+CORE_FILES = {"prism_robot/__init__.py", "prism_robot/conditioner.py", "prism_robot/polynomial.py"}
+CORE_TEST_FILES = {"tests/test_prism.py", "tests/test_conditioner.py"}
 SOURCE_FILES = {
     "pyproject.toml",
-    "Makefile",
     "NOTICE.md",
+    "LICENSE",
     "README.md",
-    "CONTRIBUTING.md",
-    "GATED_MIGRATION.md",
-    "configs/actor_contracts.json",
-    "integrations/humanoid-gym/actor.py",
-    "integrations/humanoid-gym/gated_actor.py",
-    "integrations/humanoid-gym/checkpoints.py",
-    "integrations/humanoid-gym/config.py",
-    "integrations/humanoid-gym/recipe_catalog.py",
-    "integrations/humanoid-gym/runtime.py",
-    "integrations/humanoid-gym/provenance.py",
-    "integrations/humanoid-gym/train.py",
-    "integrations/humanoid-gym/evaluate.py",
-    "integrations/humanoid-gym/run_suite.py",
-    "integrations/humanoid-gym/evaluation_protocol.py",
-    "integrations/humanoid-gym/build_main_table.py",
-    "integrations/humanoid-gym/run_main_table.py",
-    "integrations/humanoid-gym/residual_gated_actor.py",
-    "integrations/humanoid-gym/run_residual_gate_controls.py",
-    "integrations/humanoid-gym/run_capacity_controls.py",
-    "integrations/humanoid-gym/run_robustness.py",
-    "integrations/humanoid-gym/run_residual_robustness.py",
-    "integrations/humanoid-gym/robustness.py",
-    "integrations/humanoid-gym/ROBUSTNESS.md",
-    "integrations/humanoid-gym/MAIN_TABLE.md",
-    "integrations/humanoid-gym/RESIDUAL_GATE_CONTROL.md",
-    "integrations/humanoid-gym/CAPACITY_COMPARISON.md",
-    "integrations/humanoid-gym/g1_env.py",
-    "integrations/humanoid-gym/legacy_base.py",
-    "integrations/humanoid-gym/SOURCE_MANIFEST.json",
-    "integrations/humanoid-gym/LICENSE.rsl-rl",
-    "integrations/humanoid-gym/LICENSE.unitree",
-    "integrations/lerobot/install.py",
-    "integrations/lerobot/source_manifest.json",
-    "integrations/lerobot/diffusion_libero.patch",
-    "integrations/lerobot/diffusion_conditioner.py",
-    "integrations/lerobot/recipes/gated_prism_task0_train_config.json",
-    "integrations/lerobot/libero_episode.py",
-    "integrations/lerobot/scripts/common.py",
-    "integrations/lerobot/scripts/profile_catalog.py",
-    "integrations/lerobot/scripts/train_diffusion.py",
-    "integrations/lerobot/scripts/evaluation_specs.py",
-    "integrations/lerobot/scripts/eval_diffusion.py",
-    "integrations/lerobot/scripts/sweep_diffusion.py",
-    "integrations/lerobot/scripts/smolvla.py",
-    "integrations/lerobot-smolvla.patch",
-    "integrations/bfm-zero.patch",
-    "integrations/bfm-zero-evaluation.patch",
-    "integrations/bfm-zero/evaluate_scenarios.py",
-    "integrations/bfm-zero/tracking_eval.py",
-    "analysis/paper/aggregate_training_seeds.py",
-    "validation/checkpoint_inventory.py",
-    "validation/checkpoint_sources.example.json",
-    "tests/test_actor_contracts.py",
+    "examples/policy.py",
+    "docs/ADAPTERS.md",
+    "docs/camera-ready-sources.json",
+    "tests/test_prism.py",
+    "tests/test_conditioner.py",
+    "validation/check_distribution.py",
     *{"src/" + name for name in CORE_FILES},
 }
-EXCLUDED_DIRECTORIES = {"outputs", "checkpoints", "datasets", "results", "wandb", ".venv", "__pycache__"}
+EXCLUDED_DIRECTORIES = {
+    "outputs",
+    "checkpoints",
+    "datasets",
+    "results",
+    "wandb",
+    ".venv",
+    "__pycache__",
+    "integrations",
+    "analysis",
+    "configs",
+    "assets",
+}
 EXCLUDED_SUFFIXES = {".pt", ".pth", ".ckpt", ".safetensors", ".pyc"}
 
 
@@ -101,6 +67,8 @@ def check_distributions(directory: Path) -> None:
             path = PurePosixPath(name)
             if path.is_absolute() or ".." in path.parts:
                 raise ValueError(f"Invalid distribution path: {name}")
+            if path.parts[0] == "tests" and name not in CORE_TEST_FILES:
+                raise ValueError(f"Non-core test was bundled: {name}")
             if EXCLUDED_DIRECTORIES.intersection(path.parts) or path.suffix in EXCLUDED_SUFFIXES:
                 raise ValueError(f"Research/runtime artifact was bundled: {name}")
         for name in CORE_FILES:

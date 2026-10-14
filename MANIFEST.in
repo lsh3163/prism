@@ -1,13 +1,15 @@
-include *.md Makefile
-include .github/workflows/*.yml
+include README.md LICENSE NOTICE.md pyproject.toml
 recursive-include src *.py
-recursive-include tests *.py
-recursive-include configs *.json *.env
-recursive-include integrations *.py *.patch *.json *.md LICENSE.*
-recursive-include analysis *.py *.json *.md
-recursive-include validation *.py *.json *.md
-recursive-include assets *.png
+include examples/policy.py
+include docs/ADAPTERS.md docs/camera-ready-sources.json
+prune tests
+include tests/test_prism.py tests/test_conditioner.py
+include validation/check_distribution.py
 global-exclude __pycache__ *.py[cod]
+prune integrations
+prune analysis
+prune configs
+prune assets
 prune outputs
 prune checkpoints
 prune datasets

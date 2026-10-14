@@ -1,5 +1,8 @@
 # Actor and checkpoint contracts
 
+> Earlier integration contracts. Start with [the current README](README.md) and
+> [camera-ready adapters](docs/ADAPTERS.md) for the current public entry point.
+
 Select the representation by its stable ID in
 [configs/actor_contracts.json](configs/actor_contracts.json). The adapters preserve
 the computation and state-dictionary layout used by their respective backbones.

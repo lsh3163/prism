@@ -58,7 +58,9 @@ their separate upstream pins. `make format` excludes archived actor/environment
 implementations and patches.
 
 The wheel contains the standalone `prism_robot` package. The source archive
-also contains the integrations, configurations, documentation, and tests.
+contains the core example, adapter documentation and core tests.
+Full integrations, configurations and experiment tooling are available from the
+Git checkout, and are excluded from both installable distributions.
 Verify a fresh build with:
 
 ```bash

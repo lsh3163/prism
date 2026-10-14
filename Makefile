@@ -1,6 +1,6 @@
 UV ?= uv
 UV_RUN ?= $(UV) run --extra test --extra dev
-LINT_PATHS = src tests analysis validation integrations/lerobot/scripts \
+LINT_PATHS = src tests examples integrations/act analysis validation integrations/lerobot/scripts \
 	integrations/lerobot/install.py integrations/lerobot/libero_episode.py \
 	integrations/bfm-zero/evaluate_scenarios.py
 

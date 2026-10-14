@@ -1,7 +1,8 @@
 # Licensing Notice
 
-No blanket license is applied to this release candidate yet. A top-level
-software license should be selected by the authors before public release.
+The standalone PRISM implementation and original PRISM adapters are licensed
+under the MIT License; see [LICENSE](LICENSE). This does not replace upstream
+licenses for derived patches, extracted environments, assets, or datasets.
 
 The integration patches are derived from, and must be used with, their
 respective upstream projects:

@@ -1,5 +1,8 @@
 # Learned gates across PRISM backbones
 
+> Earlier integration contracts. Start with [the current README](README.md) and
+> [camera-ready adapters](docs/ADAPTERS.md) for the current public entry point.
+
 All default PRISM training recipes use `u * (1 + alpha * v)`, where `u` and
 `v` are learned affine features of the selected state/history. `alpha` is a
 trainable vector initialized to 0.01, with one value per latent feature. For

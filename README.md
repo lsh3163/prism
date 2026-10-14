@@ -1,130 +1,78 @@
-<h1 align="center">PRISM</h1>
+# PRISM
 
-<h3 align="center">
-  Polynomial Representations for Interaction-Structured Motor Control
-</h3>
+**Polynomial Representations for Interaction-Structured Motor Control**
 
-<p align="center">
-  <strong>Seung Hyun Lee</strong> &middot; <strong>Stella X. Yu</strong>
-</p>
+Seung Hyun Lee · Stella X. Yu · University of Michigan
 
-<p align="center">
-  <a href="https://lsh3163.github.io/prism/"><strong>Project Page</strong></a>
-  &nbsp;&middot;&nbsp;
-  <a href="https://arxiv.org/abs/2607.23473"><strong>arXiv</strong></a>
-  &nbsp;&middot;&nbsp;
-  <a href="https://arxiv.org/pdf/2607.23473"><strong>Paper PDF</strong></a>
-  &nbsp;&middot;&nbsp;
-  <a href="RESULTS.md"><strong>Results</strong></a>
-  &nbsp;&middot;&nbsp;
-  <a href="REPRODUCIBILITY.md"><strong>Reproducibility</strong></a>
-</p>
+[Paper](https://arxiv.org/abs/2607.23473) · [Project page](https://lsh3163.github.io/prism/) · [Results](https://github.com/lsh3163/prism/blob/main/RESULTS.md)
 
-<p align="center">
-  <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-315d45">
-  <img alt="PyTorch 2.1+" src="https://img.shields.io/badge/PyTorch-2.1%2B-cb6d3f">
-  <img alt="Backbones: G1 PPO, Diffusion, BFM-Zero, SmolVLA" src="https://img.shields.io/badge/Backbones-G1%20PPO%20%7C%20Diffusion%20%7C%20BFM--Zero%20%7C%20SmolVLA-486b3e">
-  <a href="https://arxiv.org/abs/2607.23473"><img alt="arXiv 2607.23473" src="https://img.shields.io/badge/arXiv-2607.23473-b31b1b"></a>
-</p>
+PRISM replaces an affine policy input layer with learned polynomial interactions.
+It trains through the policy's existing objective. The core needs only PyTorch.
 
-<p align="center">
-  <a href="https://lsh3163.github.io/prism/">
-    <img src="assets/prism-method.png" width="100%"
-      alt="PRISM integration in reinforcement-learning and imitation-learning policies">
-  </a>
-</p>
-
-PRISM adds learned polynomial interactions to a policy's proprioceptive branch.
-This repository provides a standalone PyTorch conditioner and integrations for
-G1 PPO, Diffusion Policy, BFM-Zero, and SmolVLA.
-
-All default PRISM training recipes use the same learned gated interaction:
-`u = A1(x)`, `v = A2(x)`, `phi = u * (1 + alpha * v)`. Each latent feature has
-its own trainable `alpha`, initialized to 0.01 and optimized with the policy's
-existing loss. Observation preprocessing, output projections, and policy
-backbones remain specific to each integration.
-
-G1 and Diffusion now use new gated actor versions. Their historical actors and
-checkpoints remain available through explicit legacy recipes. Existing G1 and
-Diffusion results do not evaluate the new gated versions; new training and
-evaluation are required. See the [migration guide](GATED_MIGRATION.md).
-
-## Quick start
+## Install
 
 ```bash
-git clone https://github.com/lsh3163/prism.git
-cd prism
-uv sync --extra test --extra dev
-make check
+pip install git+https://github.com/lsh3163/prism.git
 ```
 
-The core supports Python 3.10+. Simulator integrations use separate environments
-and pinned upstream revisions; follow their installation guides below.
+Python 3.10+ and PyTorch 2.1+. For a source checkout, use `pip install -e .`.
+
+## Use
 
 ```python
 import torch
-from prism_robot import PRISMConditioner
+from torch import nn
+from prism_robot import PRISM
 
-conditioner = PRISMConditioner(
-    input_dim=32,
-    output_dim=1152,
-    hidden_dim=1152,
-    degree=2,
-    interaction_mode="gated",
-    gate_init=1e-2,
-    post_mlp_layers=2,
-    use_rmsnorm=True,
+policy = nn.Sequential(
+    PRISM(32, 256),       # (..., 32) -> (..., 256)
+    nn.ELU(),
+    nn.Linear(256, 12),
 )
-features = conditioner(torch.randn(8, 32))
-assert features.shape == (8, 1152)
+actions = policy(torch.randn(8, 32))
 ```
 
-`conditioner.polynomial_features(x)` returns the interaction features before
-the output projection. The shared API supports gated and factorized modes.
-Existing backbone checkpoints use the specific adapters listed below.
-
-## Choose an integration
-
-| Backbone | Representation | Guide |
-|---|---|---|
-| G1 PPO | Learned gated encoder; degree 2 by default, degree 1/2/3 ablations | [Humanoid-Gym integration](integrations/humanoid-gym/README.md) |
-| LeRobot Diffusion | Learned gated quadratic state-history conditioner | [Diffusion setup and experiments](integrations/lerobot/README.md) |
-| BFM-Zero | Gated quadratic filter on `history_actor` | [Pinned patches](integrations/README.md), [training and evaluation](REPRODUCIBILITY.md#bfm-zero) |
-| LeRobot SmolVLA | Gated quadratic proprioceptive projection | [LeRobot integration](integrations/lerobot/README.md), [protocol](REPRODUCIBILITY.md#smolvla) |
-
-These adapters share the gated interaction and preserve their own interfaces and
-checkpoint schemas. Use the
-[actor contracts](ACTOR_CONTRACT.md) and [architecture registry](configs/actor_contracts.json)
-to select the correct loader, normalization, feature ordering, and gate or warmup
-behavior. The standalone conditioner does not convert an existing checkpoint.
-
-## Documentation
-
-- [Experiments](EXPERIMENTS.md): simulation workflows, analyses, and protocol controls.
-- [Gated migration](GATED_MIGRATION.md): shared algorithm, version selection, and retraining scope.
-- [Reproducibility](REPRODUCIBILITY.md): shared run metadata and stronger-backbone recipes.
-- [Real demonstration](REAL_DEMO.md): train and deploy the same LeRobot policy on your robot.
-- [Validation](validation/README.md): CPU checks and portable checkpoint inventory.
-- [Simulator checks](validation/SMOKE_REPORT.md): completed G1 and LIBERO execution checks.
-- [Learned-gate checks](validation/GATED_REPORT.md): optimizer, checkpoint, and short training validation.
-- [Results](RESULTS.md): archived stronger-backbone measurements and their scope.
-- [Contributing](CONTRIBUTING.md): code conventions and checks.
-
-## Repository layout
+The default layer implements the camera-ready paper's quadratic representation:
 
 ```text
-src/prism_robot/    Standalone PyTorch conditioner
-integrations/      Pinned adapters, installers, and experiment runners
-configs/           Actor contracts and training recipes
-analysis/          Representation probes, plots, and metric aggregation
-validation/        Portable checkpoint inventory and validation notes
-tests/             CPU checks of models, interfaces, and release tools
+u = W1 x + b1
+v = W2 x + b2
+psi = u + s2 * (u * v)
 ```
 
-Checkpoints, datasets, simulator assets, generated results, and local audit
-records remain outside the source distribution. Setup, smoke evaluation, and
-full benchmark reproduction are distinct validation stages; completed checks
-are recorded in the validation report.
+`s2` is a learned scalar initialized to 0.01. `degree=1` gives an affine layer;
+`degree=3` adds a third affine factor and scalar interaction stage. Projection,
+activation and normalization follow the polynomial layer and are chosen by the
+policy. Continue using the original observation preprocessing and action interface.
+
+Run the CPU example from a checkout:
+
+```bash
+python examples/policy.py
+```
+
+## Policy integrations
+
+[Adapter guide](docs/ADAPTERS.md): ACT and native mjlab camera-ready modules,
+plus the existing Humanoid-Gym, SmolVLA and BFM-Zero integrations. Each backend
+uses its own environment. Simulator dependencies are not installed with PRISM.
+
+The existing `PRISMConditioner` API and historical checkpoint loaders remain
+available. They retain their original parameter layouts; use the corresponding
+adapter when loading a trained policy. The new `PRISM` layer is the small,
+backbone-independent polynomial feature map, not a checkpoint converter.
+
+## Development
+
+```bash
+pip install -e '.[test,dev]'
+uv run --extra test --extra dev python -m unittest discover -s tests -v
+```
+
+See [CONTRIBUTING.md](https://github.com/lsh3163/prism/blob/main/CONTRIBUTING.md). Wheels and source distributions contain
+the core, its example, documentation and core tests. Full experiment tools stay
+in this Git repository. [Earlier experiment documentation](https://github.com/lsh3163/prism/blob/main/docs/legacy/README.md)
+is retained separately from the camera-ready entry point.
 
 ## Citation
 
@@ -133,15 +81,11 @@ are recorded in the validation report.
   title = {PRISM: Polynomial Representations for Interaction-Structured Motor Control},
   author = {Lee, Seung Hyun and Yu, Stella X.},
   journal = {arXiv preprint arXiv:2607.23473},
-  year = {2026},
-  doi = {10.48550/arXiv.2607.23473},
-  url = {https://arxiv.org/abs/2607.23473}
+  year = {2026}
 }
 ```
 
-## Licensing
+## License
 
-A top-level license for the standalone PRISM implementation is being
-finalized. The integration patches remain subject to their respective
-BFM-Zero and LeRobot upstream terms. See [NOTICE.md](NOTICE.md) before
-redistribution.
+MIT for the original PRISM implementation. Derived integrations retain their
+upstream terms; see [NOTICE.md](NOTICE.md).
