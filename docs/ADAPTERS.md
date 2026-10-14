@@ -38,6 +38,11 @@ for that pipeline or supply its data/checkpoints.
 
 ## Native mjlab
 
+For pretrained PRISM and MLP actors with an interactive browser viewer, use the
+[G1 play example](../examples/g1/README.md). Actor-only weights and their trained
+normalization are included in `checkpoints/g1`; the example requires no private
+experiment paths or training files.
+
 The module requires upstream `rsl_rl.models.MLPModel` and `rsl_rl.modules.MLP`.
 The recorded mjlab source revision is
 [`033ae22a`](https://github.com/mujocolab/mjlab/tree/033ae22a2c7a30a25a6fa77b16c113ed88dd1b55).
@@ -59,10 +64,11 @@ The recorded mjlab actor uses a **per-feature** `alpha` vector. Preserve that
 shape when loading its checkpoint. The standalone `PRISM` API follows the paper's
 **scalar** coefficients; replacing one by the other changes the trained model.
 
-The module supplies the checkpoint-compatible actor, not the complete rough-terrain
-training or 1,000-pair evaluation launcher. Original checkpoint maps, resets,
+The module and play example supply trained-policy inference, not the complete
+rough-terrain training or 1,000-pair evaluation launcher. Original checkpoint maps, resets,
 terrain geometry, normalization statistics and evaluation horizons must accompany
-benchmark reproduction. The results in this release were not rerun during cleanup.
+benchmark reproduction. The play example is a qualitative simulation with a smaller
+grid and its own deterministic reset, separate from the paper's aggregate evaluation.
 
 ## Existing APIs and source records
 

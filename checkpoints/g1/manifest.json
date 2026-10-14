@@ -1,0 +1,44 @@
+{
+  "schema": "prism_g1_actor_release_v1",
+  "license": "MIT",
+  "mjlab_commit": "033ae22a2c7a30a25a6fa77b16c113ed88dd1b55",
+  "observation_dim": 286,
+  "action_dim": 29,
+  "control_hz": 50,
+  "normalization": "Native learned EmpiricalNormalization, epsilon 0.01; frozen during play",
+  "observation_order": [
+    "base_lin_vel",
+    "base_ang_vel",
+    "projected_gravity",
+    "joint_pos",
+    "joint_vel",
+    "actions",
+    "command",
+    "height_scan"
+  ],
+  "scope": "Deterministic trained actor with normalization and distribution tensors; no critic or optimizer",
+  "actors": {
+    "prism": {
+      "file": "prism.pt",
+      "variant": "prism",
+      "sha256": "3a0e0368eb1affb5fa6f73fa74d5f3fe48ea8b2ce39586961bdbc8ffb929cfb5",
+      "bytes": 1577582,
+      "source_checkpoint_sha256": "5449bfb5715a85f233ae16c2459d8ff0ac4d06b58b8775e7ed6385fdd8a537ab",
+      "training_seed": 1,
+      "completed_updates": 30000,
+      "completed_control_steps": 720000,
+      "trainable_parameters": 391965
+    },
+    "mlp": {
+      "file": "mlp.pt",
+      "variant": "standard",
+      "sha256": "d0cf82a1202fff06f96981aa2c919acfc20591aa62b4a2179a8a7d456e24743f",
+      "bytes": 1268201,
+      "source_checkpoint_sha256": "5e3960a361847adb048b1acffeb846540d589ff1dc7c36a73fe9dd74e872c343",
+      "training_seed": 1,
+      "completed_updates": 30000,
+      "completed_control_steps": 720000,
+      "trainable_parameters": 315066
+    }
+  }
+}
